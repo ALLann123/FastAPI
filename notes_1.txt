@@ -1,0 +1,138 @@
+=================Pydantic================
+- Is a python data validation and parsing library that enforces type
+hints at runtime using Python's built-in type annotations.
+- Simpler words we get:
+	1. Automatic Checking data we receive matches the type and
+constraints we define in our model
+	2. Conversation: tries to convert data to the correct type whenever
+possible.
+	3. Structured Data Handling- lets us define complex, nested data
+structures, and ensure all data in it is validated
+N/B: No using if-else conditional statements.
+> Reduces logical errors as in python we often work with
+	a. APIs
+	b. Databases
+	c. forms
+	d. JSON
+Data can be inconsistent.
+
+=======Install=========
+- Run:
+	cmd>> uv pip install pydantic
+
+======Our first code==========
+- BaseModel is the most important thing. Enforces type hints at run time.
+*************main.py*******************
+#!/usr/bin/python3
+from pydantic import BaseModel  #enforced type hints at run time
+
+class User(BaseModel):
+    name:str  #hints required
+    age:int
+    is_active:bool
+
+# create an object
+user1=User(name="Jof", age=27, is_active=True)
+print(user1)
+print(user1.model_dump())
+
+"""
+Pydantic>python 1_first_code.py
+name='Jof' age=27 is_active=True
+{'name': 'Jof', 'age': 27, 'is_active': True}
+"""
+***************************************
+
+=========Type Convertion==========
+- Pydantic can convert data to the right format whenever possible.
+- Pass age as a string we see.
+**************************main.py**************************
+#!/usr/bin/python3
+from pydantic import BaseModel
+
+class User(BaseModel):
+    name: str
+    age: int
+    status: bool
+
+user1=User(name="Alley", age="23", status=False)
+
+print(user1.model_dump())
+
+"""
+>python 3_convertion.py
+{'name': 'Alley', 'age': 23, 'status': False}
+
+"""
+*****************************************************************
+N/B: It cannot do advanced convertions.
+
+
+===================Fields()================
+- Lets us add metadata, validation rules and custom behavior to a model 
+field
+*************main.py*******************
+#!/usr/bin/python3
+from pydantic import BaseModel, Field
+
+# Field is like a DocString and can be usefull for an LLM
+class FieldUser(BaseModel):
+    name: str=Field(description="The user's full name")
+
+user1=FieldUser(name="Eliot")
+print(user1.model_dump())
+
+"""
+python 4_field.py
+{'name': 'Eliot'}
+
+"""
+***************************************
+N/B: Can be useful when building Agents to provide AI models with additional
+context.
+
+- We can use Fields() and set default values:
+*************main.py*******************
+#!/usr/bin/python3
+from pydantic import BaseModel, Field
+
+# Field is like a DocString and can be usefull for an LLM
+class FieldUser(BaseModel):
+    name: str=Field(description="The user's full name", default="John")
+
+user1=FieldUser()
+print(user1.model_dump())
+
+"""
+python 4_field.py
+{'name': 'John'}
+
+"""
+***************************************
+PROBLEM: Pydantic does not validate the default value passed!!
+
+
+
+
+
+
+*************main.py*******************
+***************************************
+
+*************main.py*******************
+***************************************
+
+*************main.py*******************
+***************************************
+
+*************main.py*******************
+***************************************
+
+*************main.py*******************
+***************************************
+*************main.py*******************
+***************************************
+*************main.py*******************
+***************************************
+*************main.py*******************
+***************************************
