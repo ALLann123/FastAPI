@@ -1,0 +1,419 @@
+=================Pydantic================
+- Is a python data validation and parsing library that enforces type
+hints at runtime using Python's built-in type annotations.
+- Simpler words we get:
+	1. Automatic Checking data we receive matches the type and
+constraints we define in our model
+	2. Conversation: tries to convert data to the correct type whenever
+possible.
+	3. Structured Data Handling- lets us define complex, nested data
+structures, and ensure all data in it is validated
+N/B: No using if-else conditional statements.
+> Reduces logical errors as in python we often work with
+	a. APIs
+	b. Databases
+	c. forms
+	d. JSON
+Data can be inconsistent.
+
+=======Install=========
+- Run:
+	cmd>> uv pip install pydantic
+
+======Our first code==========
+- BaseModel is the most important thing. Enforces type hints at run time.
+*************main.py*******************
+#!/usr/bin/python3
+from pydantic import BaseModel  #enforced type hints at run time
+
+class User(BaseModel):
+    name:str  #hints required
+    age:int
+    is_active:bool
+
+# create an object
+user1=User(name="Jof", age=27, is_active=True)
+print(user1)
+print(user1.model_dump())
+
+"""
+Pydantic>python 1_first_code.py
+name='Jof' age=27 is_active=True
+{'name': 'Jof', 'age': 27, 'is_active': True}
+"""
+***************************************
+
+=========Type Convertion==========
+- Pydantic can convert data to the right format whenever possible.
+- Pass age as a string we see.
+**************************main.py**************************
+#!/usr/bin/python3
+from pydantic import BaseModel
+
+class User(BaseModel):
+    name: str
+    age: int
+    status: bool
+
+user1=User(name="Alley", age="23", status=False)
+
+print(user1.model_dump())
+
+"""
+>python 3_convertion.py
+{'name': 'Alley', 'age': 23, 'status': False}
+
+"""
+*****************************************************************
+N/B: It cannot do advanced convertions.
+
+
+===================Fields()================
+- Lets us add metadata, validation rules and custom behavior to a model 
+field
+*************main.py*******************
+#!/usr/bin/python3
+from pydantic import BaseModel, Field
+
+# Field is like a DocString and can be usefull for an LLM
+class FieldUser(BaseModel):
+    name: str=Field(description="The user's full name")
+
+user1=FieldUser(name="Eliot")
+print(user1.model_dump())
+
+"""
+python 4_field.py
+{'name': 'Eliot'}
+
+"""
+***************************************
+N/B: Can be useful when building Agents to provide AI models with additional
+context.
+
+- We can use Fields() and set default values:
+*************main.py*******************
+#!/usr/bin/python3
+from pydantic import BaseModel, Field
+
+# Field is like a DocString and can be usefull for an LLM
+class FieldUser(BaseModel):
+    name: str=Field(description="The user's full name", default="John")
+
+user1=FieldUser()
+print(user1.model_dump())
+
+"""
+python 4_field.py
+{'name': 'John'}
+
+"""
+***************************************
+PROBLEM: Pydantic does not validate the default value passed!!
+
+
+===========Aliasing=================== 
+- Is a different name that our model can use to:	
+	1. Accept Input(validation)
+	2. Give Output(serialization)
+- Example:
+JSON API:
+{
+	"pkg_weight_kg":4.5,
+	"pkg_dest":"Singapore",
+	"pkg_is_fragile":true
+}
+- Backend would prefer:
+	> weight
+	> destination
+	> is_fragile
+- In pydantic:
+*************main.py*******************
+#!/usr/bin/python3
+from pydantic import BaseModel, Field
+
+class Book(BaseModel):
+    title: str=Field(
+        validation_alias="book_title",  # Input will use this
+        serialization_alias="bookTitle" # Output will use this
+    )
+    author: str=Field(
+        validation_alias="author_name", #input will use this
+        serialization_alias="authorName" # output will use this
+    )
+
+# pass our input data in the JSOn/Dictionary
+backend_data={
+    "book_title":"Pydantic Guide",
+    "author_name":"Own_the_Net"
+}
+
+# create an object
+book=Book(**backend_data)
+
+#display
+print(book.title)
+print(book.author)
+print(book.model_dump())
+print(book.model_dump(by_alias=True))
+
+
+"""
+Pydantic>python 7_book_class.py
+Pydantic Guide
+Own_the_Net
+{'title': 'Pydantic Guide', 'author': 'Own_the_Net'}
+{'bookTitle': 'Pydantic Guide', 'authorName': 'Own_the_Net'}
+
+"""
+***************************************
+- Quick Recap:
+	> Validation Alias- is the alias that accepts the input from the API
+	> Serialization Alias- is what gives the output.
+
+=============Numerical Limits============
+- Validation doesnt have to end by using Aliases.
+- When working with integers we may want limits
+*************main.py*******************
+#!/usr/bin/python3
+from pydantic import BaseModel, Field
+
+class Product(BaseModel):
+    name: str=Field(min_length=1, max_length=50)
+    price: float=Field(gt=0) #gt stands for greater than
+    description:str | None=Field(default=None, max_length=300)
+
+# usage
+valid_product=Product(name="laptop", price=99.99, description="Core i7, GPU Intel, RAM 16GB")
+
+print(valid_product)
+print(valid_product.model_dump())
+
+"""
+Pydantic>python 8_numeric_limits.py
+name='laptop' price=99.99 description='Core i7, GPU Intel, RAM 16GB'
+{'name': 'laptop', 'price': 99.99, 'description': 'Core i7, GPU Intel,
+
+========Try to input the wrong input e.g -99 on price=========
+price
+  Input should be greater than 0 [type=greater_than, input_value=-99.99, input_type=float]
+    For further information visit https://errors.pydantic.dev/2.13/v/greater_than
+"""
+***************************************
+
+- Exercise:
+*************main.py*******************
+#!/usr/bin/python3
+from pydantic import BaseModel, Field
+
+class Book(BaseModel):
+    title: str=Field(min_length=1, max_length=100)
+    author: str
+    isbn: str = Field(default=None)
+    price: float=Field(gt=0, le=1000) # le stands for "less than or equal"
+    in_stock:bool=Field(default=True)
+
+# test
+myBook=Book(title="Linux for Hackers", author="OTW", price=490)
+
+# Display
+print(myBook)
+print(myBook.model_dump())
+
+"""
+Pydantic>python 9_exercise_1.py
+title='Linux for Hackers' author='OTW' isbn=None price=490.0 in_stock=True
+{'title': 'Linux for Hackers', 'author': 'OTW', 'isbn': None, 'price': 490.0, 'in_stock': True}
+
+"""
+***************************************
+
+
+
+=================Validation===================
+- Advanced
+- Is the main reason we use pydantic
+- @model_validator is used when we want to:
+	1. Validate multiple fields together
+	2. To perform logic that involves the whole model.
+	3. Run code before or after normal field validation.
+*************main.py*******************
+#!/usr/bin/python3
+from pydantic import BaseModel, model_validator
+
+class Event(BaseModel):
+    name: str
+    start_hour:int
+    end_hour:int
+
+    # class method for additional checks
+    @model_validator(mode='after') # use a decorator
+    def check_time(self):
+        if self.end_hour<=self.start_hour:
+            raise ValueError("end_hour must be greater that start_hour. Fix it!!")
+
+        return self
+
+# will throw error
+event1=Event(name="Hackathon", start_hour=9, end_hour=11)
+
+# Display
+print(event1)
+print(event1.model_dump())
+
+"""
+pydantic_core._pydantic_core.ValidationError: 1 validation error for Event
+  Value error, end_hour must be greater that start_hour. Fix it!! [type=value_error, input_value={'name': 'Hackathon', 'st...our': 10, 'end_hour': 9}, input_type=dict]
+
+=====Fixed Error=======
+Pydantic>python 10_validation_intro.py
+name='Hackathon' start_hour=9 end_hour=11
+{'name': 'Hackathon', 'start_hour': 9, 'end_hour': 11}
+
+"""
+***************************************
+
+- Inside the decorator there are modes. The 2 options:
+	1. before: before validation
+	2. after: after validation
+*************main.py*******************
+#!/usr/bin/python3
+from pydantic import BaseModel, model_validator
+
+class Delivery(BaseModel):
+    pickup: int
+    drop: int
+
+    @model_validator(mode='before')
+    @classmethod
+    def fix_input(cls, data):
+        print("Before validator sees raw input: ", data)
+
+        # swap them if they are reversed
+        if int(data['drop']) < int(data['pickup']):
+            data['pickup'], data['drop']=data['drop'], data['pickup']
+        return data
+
+order1=Delivery(pickup=15, drop=13)
+print("After model validation: ", order1.model_dump())
+
+"""
+Pydantic>python 11_model_validator.py
+Before validator sees raw input:  {'pickup': 15, 'drop': 13}
+After model validation:  {'pickup': 13, 'drop': 15}
+
+"""
+***************************************
+@model_validator(mode="before") is ran before the delivery model is fully 
+created. We dont have an instance yet so self does not exist.
+- Use cls, which is the model class(Delivery) to define logic for preprocessing
+the raw input data.
+- @model_validator() can handle multiple fields.
+- @field_validator() focuses on one field.
+*************main.py*******************
+#!/usr/bin/python3
+from pydantic import BaseModel, field_validator
+
+class Product(BaseModel):
+    price: float
+
+    @field_validator("price")
+    def must_be_positive(value):
+        if value<=0:
+            raise ValueError("Price must be greater than 0")
+
+        return value
+
+product1=Product(price=93)
+
+print(product1.model_dump())
+
+"""
+Pydantic>python 12_field_validator.py
+{'price': 93.0}
+
+=====change 93 to -93=========
+price
+  Value error, Price must be greater than 0 [type=value_error, input_value=-93, input_type=int]
+    For further information visit https://errors.pydantic.dev/2.13/v/value_error
+"""
+***************************************
+
+
+
+
+===========Built-in Types============
+- Pydantic ships in regex reducing extra code. Making development more
+efficient.
+-  The abstraction methods
+- Add the package:
+	cmd>> uv pip install "pydantic[email]"
+- The code:
+*************main.py*******************
+#!/usr/bin/python3
+from pydantic import BaseModel, EmailStr, HttpUrl, PositiveInt
+
+
+class Contact(BaseModel):
+    email:EmailStr
+    website:HttpUrl
+    followers:PositiveInt  #only numbers>0
+
+good=Contact(
+    email="hi@gmail.com",
+    website="https://example.com",
+    followers=992
+)
+
+
+print(good)
+print(good.model_dump())
+
+"""
+Pydantic>python 13_built_intypes.py
+email='hi@gmail.com' website=HttpUrl('https://example.com/') followers=992
+{'email': 'hi@gmail.com', 'website': HttpUrl('https://example.com/'), 'followers': 992}
+"""
+***************************************
+- A whole list of build in types in the pydantic documentation.
+
+
+============Nested Models============
+- One pydantic model is inside another model
+- Helps organize data cleanly, like JSON objects, inside JSON objects.
+*************main.py*******************
+#!/usr/bin/python3
+from pydantic import BaseModel
+
+class Address(BaseModel):
+    street:str
+    city:str
+    postcode:str
+
+class User(BaseModel):
+    name: str
+    email:str
+    address:Address
+
+
+data={
+    "name":"Boby",
+    "email":"bob@gmail.com",
+    "address":{
+        "street":"123 UCL Road",
+        "city":"London",
+        "postcode":"AB1 2CD"
+    }
+}
+
+user=User(**data)
+print(user.address.city)
+
+"""
+Pydantic>python 14_nested_models.py
+London
+"""
+***************************************
+
+==============Recursive Models=============
+- Similar to Nested models we can create Recursive models
