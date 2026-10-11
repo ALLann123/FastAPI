@@ -1,0 +1,266 @@
+==============FastAPI-REST Architecture=============
+- RElational State Transfer(REST)is a software architectural style.
+- Defines how the architecture of a web application should behave.
+
+=========Architectural COnstraints========
+- Uniform Interface
+- Statelessness
+- Client-server
+- Cacheability
+- Layered System
+- Code on demand
+
+=======Advantages of REST Constraints========
+- Include:
+> Scalability
+> Simplicity
+> Modifiability
+> Scalability
+> Portability
+> Visibility
+- REST uses HTTP verbs or methods for the operation on the resources.
+Include: POST, GET, PUT, DELETE methods to perform CRUD
+CRUD: is CREATE, READ, UPDATE, DELETE operations respectively
+
+
+
+============Path Parameters==============
+- Modern web frameworks use routes or endpoints as part of URL instead
+of file-based URLs.
+- Helps the user to remember the application URLs more effectively.
+- In FastAPI term this as path.
+- Example:
+	"http://localhost:8000/hello/my-profile"
+The path/route will be:
+	`hello/my-profile`
+- In FastAPI, such a path string is given as a parameter to the operation
+decorator.
+- The operation above refers to the http method(verb) used by the browser
+to send the data.
+- CRUD operations.
+Example:
+***************main.py********************
+from fastapi import FastAPI
+
+app=FastAPI()
+
+@app.get("/")
+async def index()"
+	return {"message":"Hello World"}
+******************************************
+The decorator object 
+	`@app.get("/")`
+("/") is our path
+get is the default operation
+"def index()" below it is the function to be executed.
+
+
+==============Method & Description===================
+GET
+- Sends data in unencrypted form to the server. Most common method
+
+HEAD
+- Same as GET but without the response body.
+
+POST
+- Sending HTML form data to the server. Data received by POST method
+is not catched by the server
+
+PUT
+- Replaces all current representations of the target resource with the
+uploaded content.
+
+DELETE
+- Removes all current representation of the target resource given by a
+url.
+
+`async` keyword tells FastAPI to run the function asynchronously i.e
+without blocking the current thread execution.
+- The decorated function above returns a JSON. The function can return
+any python object.
+
+===========Usage of Path Parameters============
+- E.g
+	http://localhost:8000/hello/my-profile
+The last value may change in every client request.
+We can use a variable to do this
+*****************main.py******************
+#!/usr/bin/python3
+from fastapi import FastAPI
+import uvicorn
+
+#------The last route can be a variable--------
+
+#create an object
+app=FastAPI()
+
+# our first path
+@app.get("/")
+async def index():
+    return {"message":"Hello World"}
+
+# Now the route with a variable
+# store input to a varible
+@app.get("/hello/{name}")
+async def sayHello(name):
+    # show user name
+    return {"name":name}
+
+
+# start our server
+if __name__=="__main__":
+    #start our server
+    uvicorn.run("5_main:app", host="127.0.0.1", port=8000, reload=True)
+******************************************
+- We visit the url:
+	http://127.0.0.1:8000/hello/allan
+We get greetings with our name.
+Change the path to something else and still game another result
+
+
+==========Access the above using OpenAPI Docs===========
+- Go to:
+	http://127.0.0.1:8000/docs
+- We get our two routes defined in our code.
+- Click our second path/route
+	Then try out
+	Add value to name
+	Click Execute button
+- We get to see the:
+	curl command executed
+	request URL
+	Servers response--> response body and response header
+	Status code. 200 successful
+
+- Our main.py can have multiple parameters separated by "/" symbol
+******************************************
+from fastapi import FastAPI
+
+app=FastAPI()
+
+@app.get("/hello/{name}/{age}")
+async def hello(name, age):
+	return {"name":name,"age":age"}
+******************************************
+- /hello is the route, followed by two parametes put in curly braces
+URL given in browser is:
+	http://localhost:8000/hello/mike/23
+The data `mike` `23` will be assigned to the variable names "name" and
+"age" respectively. The output JSON will be
+{
+	"name":"mike",
+	"age":"23"
+}
+
+
+======Path Parameters with Types======
+- Use pythons type hints for the parameters of the function to be decorated
+- Define name as str and age as int.
+******************************************
+#!/usr/bin/python3
+import uvicorn
+from fastapi import FastAPI
+
+app=FastAPI()
+
+@app.get("/hello/{name}/{age}")
+async def hello(name:str, age:int):
+    return {"name":name, "age":age}
+
+# start our server
+if __name__=="__main__":
+    #start our server
+    uvicorn.run("6_type_vars:app", host="127.0.0.1", port=8000, reload=True)
+******************************************
+- Test with:
+	http://127.0.0.1:8000/hello/allan/11
+Then a wrong input type:
+	http://127.0.0.1:8000/hello/allan/eleven
+- Browse to
+	http://127.0.0.1:8000/docs
+for testing using openapi.
+
+
+====================Query Parameters======================
+- We add a trailing "?" to the query string. Passed as the server-side
+input
+	http://localhost/cgi-bin/hello.py?name=Ravi&age=20
+- Query parameters
+****************main.py******************
+#!/usr/bin/python3
+from fastapi import FastAPI
+import uvicorn
+
+app=FastAPI()
+
+@app.get("/hello")
+async def hello(name:str, age:int):
+    return {"name":name, "age":age}
+
+# start our server
+if __name__=="__main__":
+    #start our server
+    uvicorn.run("7_query_params:app", host="127.0.0.1", port=8000, reload=True)
+*****************************************
+- Access and try it with:
+	http://localhost:8000/hello?name=Ravi&age=29
+OUTPUT
+	{"name":"Ravi","age":29}
+
+
+
+===================Parameter Validation======================
+- It is possible to apply validation conditions on path parameters as well
+as query parameters of the URL.
+- Import "Path Class" inorder to apply the validation conditions on a 
+parameter.
+- Specify the minimum and maximum number of a string.
+****************main.py*******************
+#!/usr/bin/python3
+from fastapi import FastAPI, Path
+import uvicorn
+
+app=FastAPI()
+
+@app.get("/hello/{name}")
+async def hello(name:str=Path(..., min_length=3, max_length=10)):
+    return {"name":name}
+
+# start our server
+if __name__=="__main__":
+    #start our server
+    uvicorn.run("8_param_validation:app", host="127.0.0.1", port=8000, reload=True)
+******************************************
+- Try the input:
+	http://localhost:8000/hello/tutorialspoint
+Error we get
+-----------------------------------
+{
+  "detail": [
+    {
+      "type": "string_too_long",
+      "loc": [
+        "path",
+        "name"
+      ],
+      "msg": "String should have at most 10 characters",
+      "input": "tutorialspoint",
+      "ctx": {
+        "max_length": 10
+      }
+    }
+  ]
+}
+-----------------------------------
+
+
+=========Validation RUles using Operators================
+- Validation rules can be applied on numeric parameters too, using the
+operators as:
+	gt--> greater than
+	ge--> greater than or equal to
+	lt--> less than
+	le--> less than or equal to
+- Apply the validators:
+
+
