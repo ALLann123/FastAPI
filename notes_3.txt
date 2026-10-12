@@ -1,0 +1,334 @@
+================Pydantic==================
+- Data parsing and validation library.
+- Validates types during the runtime.
+- BaseModel class for creating user defined models.
+
+===Example=====
+- We have a class student with a model_dump
+******************************************
+#!/usr/bin/python3
+from pydantic import BaseModel
+from typing import List
+
+class Student(BaseModel):
+    id: int
+    name: str
+    subjects:List[str]=[]
+
+
+data={
+    "id":1,
+    "name":"Walker",
+    "subjects":["math","C++","AI"]
+}
+
+s1=Student(**data)
+
+print(s1)
+
+print(s1.model_dump())
+
+"""
+FastAPI>python 9_stud_pyda.py
+id=1 name='Walker' subjects=['math', 'C++', 'AI']
+{'id': 1, 'name': 'Walker', 'subjects': ['math', 'C++', 'AI']}
+"""
+******************************************
+- Pydantic will get the data types converted whenever possible. Whenever
+not possible raise an exception.
+
+
+============Validation Error==============
+- Field Class in pydantic is for metadata and validation rules for the
+model attributes.
+******************************************
+#!/usr/bin/python3
+from typing import List
+from pydantic import BaseModel, Field
+
+class Student(BaseModel):
+    id:int
+    name:str=Field(None, title="The Description of the item", max_length=10)
+    subjects:List[str]=[]
+
+data={
+    "id":123,
+    "name":"Walker Walker",
+    "subjects":["Eng","Math","Scie"]
+}
+
+s1=Student(**data)
+
+print(s1.model_dump())
+
+"""
+pydantic_core._pydantic_core.ValidationError: 1 validation error for Student
+name
+  String should have at most 10 characters
+"""
+******************************************
+
+
+
+=================Request Body==================
+- Use pydantic model object as a request body of the clients request.
+- Use POST method.
+- We need to validate the data from the frontend form page(example)
+******************************************
+#!/usr/bin/python3
+from fastapi import FastAPI
+from typing import List
+from pydantic import BaseModel, Field
+import uvicorn
+
+app=FastAPI()
+
+# Create our validation
+class Student(BaseModel):
+    id:int
+    name:str=Field(None, title="name of student", max_length=10)
+    subjects:List[str]=[]
+
+# our post request when form is submited
+@app.post("/students/")
+async def student_data(s1:Student):
+    return s1
+
+# start our server
+if __name__=="__main__":
+    #start our server
+    uvicorn.run("11_validation:app", host="127.0.0.1", port=8000, reload=True)
+******************************************
+- Access the openapi to test our endpoint
+	http://127.0.0.1:8000/docs
+
+
+- We can also import Body and use it to populate our response as seen
+below without adding it to the pydantic class.
+******************************************
+#!/usr/bin/python3
+from fastapi import FastAPI, Body
+from typing import List
+from pydantic import BaseModel, Field
+import uvicorn
+
+app=FastAPI()
+
+# Create our validation
+class Student(BaseModel):
+    id:int
+    name:str=Field(None, title="name of student", max_length=10)
+    subjects:List[str]=[]
+
+# our post request when form is submited
+@app.post("/students/")
+async def student_data(name:str=Body(...), marks:int=Body(...)):
+    return {"name":name, "marks":marks}
+
+# start our server
+if __name__=="__main__":
+    #start our server
+    uvicorn.run("11_validation:app", host="127.0.0.1", port=8000, reload=True)
+******************************************
+
+- We can also declare an operation function to have path and/or query
+parameters along with a request body.
+******************************************
+#!/usr/bin/python3
+from fastapi import FastAPI, Body
+from typing import List
+from pydantic import BaseModel, Field
+import uvicorn
+
+app=FastAPI()
+
+class Student(BaseModel):
+    id:int
+    name:str=Field(
+        None,
+        title="name of student",
+        max_length=10,
+        min_length=4 
+    )
+    subjects:List[str]=[]
+
+@app.post("/students/{college}")
+async def student_data(college:str, age:int, student:Student):
+    retval={"college":college, "age":age, **student.model_dump()}
+    return retval
+
+# start our server
+if __name__=="__main__":
+    #start our server
+    uvicorn.run("12_request_body:app", host="127.0.0.1", port=8000, reload=True)
+******************************************
+
+
+
+====================Templates=========================
+- Bydefault, FastAPI renders JSON response to the client.
+- It can also cast HTML response.
+- We use HTMLResponse class
+Example:
+******************************************
+#!/usr/bin/python3
+from fastapi import FastAPI
+import uvicorn
+from fastapi.responses import HTMLResponse
+
+app=FastAPI()
+
+@app.get("/hello/")
+async def hello():
+    ret='''
+    <html>
+    <body>
+        <h2>Hello World</h2>
+    </body>
+    </html>
+'''
+    return HTMLResponse(content=ret)
+
+# start our server
+if __name__=="__main__":
+    #start our server
+    uvicorn.run("13_html_response:app", host="127.0.0.1", port=8000, reload=True)
+******************************************
+- Go to:
+	http://localhost:8000/docs
+
+- We can render prebuilt HTML pages as templates.
+- We use a web template library
+- Template engine that merges a static web page having place holder
+variables.
+- Data from any source is merged to dynamically generate and render the
+web page.
+	cmd>> uv pip install jinja2
+
+=======Using External HTML Page=========
+- hello.html to be rendered. Put in templates directory
+<html>
+<body>
+<h2>Hello World!</h2>
+</body>
+</html>
+******************************************
+#!/usr/bin/python3
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+import uvicorn
+
+app=FastAPI()
+
+templates=Jinja2Templates(directory="templates")
+
+
+@app.get("/hello/", response_class=HTMLResponse)
+async def hello(request:Request):
+    return templates.TemplateResponse(request,"hello.html")
+
+# start our server
+if __name__=="__main__":
+    #start our server
+    uvicorn.run("14_render_html:app", host="127.0.0.1", port=8000, reload=True)
+******************************************
+
+
+
+
+====================Static Files====================
+- Dynamic data can be added to a response
+- Includes: static assets like media files(png, jpg, etc)or JS files to
+be used to execute some front end code, or css files
+- We add the library:
+	cmd>> uv pip install aiofiles
+************templates/hello.html**************
+<html>
+
+<body>
+    <h2>Hello Welcomt to FastAPI</h2>
+    <img src="{{url_for('static', path='fa_logo.png')}}" alt="" width="300">
+</body>
+
+</html>
+*************************************************
+- Make sure the png image is in static directory.
+******************************************
+#!/usr/bin/python3
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+import uvicorn
+
+app=FastAPI()
+
+templates=Jinja2Templates(directory="templates")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/hello/{name}", response_class=HTMLResponse)
+async def hello(request:Request, name:str):
+    return templates.TemplateResponse(request,"hello.html", {"name":name})
+
+# start our server
+if __name__=="__main__":
+    #start our server
+    uvicorn.run("15_render_image:app", host="127.0.0.1", port=8000, reload=True)
+******************************************
+
+
+
+
+====================HTML Form Templates====================
+- Let's add a "/login" to our application created
+**********login.html************************
+<html>
+
+<body>
+    <form action="/submit" method="POST">
+        <h3>Enter User Name</h3>
+        <p><input type="text" name="nm" /></p>
+        <h3>Enter Password</h3>
+        <p><input type="password" name="pwd" /></p>
+        <p><input type="submit" value="login" /></p>
+    </form>
+</body>
+
+</html>
+********************************************
+
+- Add a /login function in main.py file
+********************************************
+#!/usr/bin/python3
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+import uvicorn
+
+app=FastAPI()
+
+templates=Jinja2Templates(directory="templates")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/hello/{name}", response_class=HTMLResponse)
+async def hello(request:Request, name:str):
+    return templates.TemplateResponse(request,"hello.html", {"name":name})
+
+
+@app.get("/login/", response_class=HTMLResponse)
+async def login(request: Request):
+    return templates.TemplateResponse(request, "login.html")
+
+
+# start our server
+if __name__=="__main__":
+    #start our server
+    uvicorn.run("15_render_image:app", host="127.0.0.1", port=8000, reload=True)
+********************************************
+
+- To get the form data install the library:
+	cmd>> uv pip install python-multipart
+
+
