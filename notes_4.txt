@@ -1,0 +1,264 @@
+============Uploaded files==================
+- Send file to the server you need to use enctype as "multipart/form-data"
+and use the input type as the file to render a button, which when clicked
+allows you to select a file from the file system.
+**********************upload.html**********************
+<html>
+
+<body>
+    <form action="http://localhost:8000/uploader" method="POST" enctype="multipart/form-data">
+        <input type="file" name="file" />
+        <input type="submit">
+    </form>
+</body>
+
+</html>
+*******************************************************
+Note The forms action parameter to the endpoint:
+	`http:localhost:8000/uploader`
+and the method POST
+- We render the HTML form as a template:
+********************main.py****************************
+#!/usr/bin/python3
+from fastapi import FastAPI, UploadFile, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+import uvicorn
+
+app=FastAPI()
+
+templates=Jinja2Templates(directory="templates")
+
+@app.get("/upload", response_class=HTMLResponse)
+async def upload(request:Request):
+    return templates.TemplateResponse(request,name="upload.html", context={"request":request})
+
+# start our server
+if __name__=="__main__":
+    #start our server
+    uvicorn.run("16_upload_main:app", host="127.0.0.1", port=8000, reload=True)
+*******************************************************
+- Run the server:
+	http://localhost:8000/upload/
+
+- Next use "shutil" library to copy the received file in the server location
+by the name "destination.png"
+******************main.py******************************
+#!/usr/bin/python3
+from fastapi import FastAPI, UploadFile, Request, File
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+import uvicorn
+import shutil
+
+app=FastAPI()
+
+templates=Jinja2Templates(directory="templates")
+
+@app.get("/upload", response_class=HTMLResponse)
+async def upload(request:Request):
+    return templates.TemplateResponse(request,name="upload.html", context={"request":request})
+
+# responsible for writing our file uploaded to the server disk
+@app.post("/uploader/")
+async def create_upload_file(file: UploadFile=File(...)):
+    with open("destination.png", "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    return {"filename":file.filename}
+
+# start our server
+if __name__=="__main__":
+    #start our server
+    uvicorn.run("16_upload_main:app", host="127.0.0.1", port=8000, reload=True)
+*******************************************************
+
+
+
+===================Cookie Parameters================
+- A cookie is one of the HTTP headers.
+- Web server sends a response to the client, in addition to the data requested
+it also inserts one or more cookies.
+- A cookie is a small amount of data that is stored in the clients machine
+- Cookies are used for recording information about clients browsing.
+- Syntax:
+	response.set_cookie(key, value)
+We have a JSON reponse object called content.
+Call the set_cookie() method on it to set a cookie as:
+	key="usrname"
+	value="admin"
+*******************************************************
+
+
+==========Headers=================
+- Part of the client request, to read it import Header object from the 
+FastAPI library and declare a parameter of Header type in the operation
+function defination.
+******************************************main.py************************
+#!/usr/bin/python3
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+import uvicorn
+
+app=FastAPI()
+
+@app.get("/rspheader/")
+def set_rsp_headers():
+    content={"message":"Hello World"}
+    headers={"X-Web-Framework":"FastAPI", "Content-Language":"en-US"}
+    return JSONResponse(content=content, headers=headers)
+
+
+# start our server
+if __name__=="__main__":
+    #start our server
+    uvicorn.run("18_headers:app", host="127.0.0.1", port=8001, reload=True)
+************************************************************************
+
+=================Response Model=================
+- An operation returns a JSON response to the client.
+- The response can be in the form of Python primary types:
+	i.e numbers, string, list, or dict, etc
+- Can also be in the form of a pydantic model.
+- A function to return a model object, the operation decorator should declare
+a response_model parameter.
+*******************main.py*****************************
+#!/usr/bin/python3
+from typing import List
+from fastapi import FastAPI
+from pydantic import BaseModel, Field
+import uvicorn
+
+app=FastAPI()
+
+class student(BaseModel):
+    id: int
+    name: str=Field(None, title="name of student", max_length=10)
+    marks:List[int]=[]
+    percent_marks:float
+
+
+class percent(BaseModel):
+    id:int
+    name:str=Field(None, title="name of student", max_length=10)
+    percent_marks:float
+
+@app.post("/marks", response_model=percent)
+async def get_percent(s1:student):
+    s1.percent_marks=sum(s1.marks)/2
+    return s1
+
+# start our server
+if __name__=="__main__":
+    #start our server
+    uvicorn.run("19_response_model:app", host="127.0.0.1", port=8000, reload=True)
+
+*******************************************************
+
+=================Nested Model=======================
+- Each attribute of a pydantic model has a type.
+- We can call our model inside another pydantic model
+*******************main.py*****************************
+#!/usr/bin/python3
+from typing import Tuple
+from fastapi import FastAPI
+from pydantic import BaseModel
+import uvicorn
+
+app=FastAPI()
+
+class supplier(BaseModel):
+    supplierID:int
+    supplierName:str
+
+class product(BaseModel):
+    productID:int
+    prodname:str
+    price:int
+    supp:supplier
+
+class customer(BaseModel):
+    custID:int
+    custname:str
+    prod:Tuple[product]
+
+
+@app.post('/invoice')
+async def getInvoice(c1:customer):
+    return c1
+
+# start our server
+if __name__=="__main__":
+    #start our server
+    uvicorn.run("20_nested_model:app", host="127.0.0.1", port=8000, reload=True)
+*******************************************************
+
+
+============Dependencies==================
+- Dependency injection refers to the mechanism where an object receives other
+objects that it depends on.
+- The other objects are called dependencies.
+- Dependency injection has the following advantages
+	> reuse the same shared logic
+	> share database connections
+	> enforce authentication and security features
+- Make sure to import "Depends" from fastAPI
+*******************************************************
+async def dependency(id: str, name: str, age: int):
+   return {"id": id, "name": name, "age": age}
+
+@app.get("/user/")
+async def user(dep: dict = Depends(dependency)):
+   return dep
+
+@app.get("/admin/")
+async def admin(dep: dict = Depends(dependency)):
+   return dep
+
+*******************************************************
+
+
+==================Cross-Origin Resource Sharing(CORS)===================
+- Situation when a frontend application that is running on one client browser
+tries to communicate with a backend through JS code and the backend is in a 
+different "origin" than the frontend.
+- Origin is a combination
+	protocol + domain name + port numbers
+- We use "CORSMiddleware" and add the list of origins to the app's middleware.
+*******************************************************
+#!/usr/bin/python3
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+app=FastAPI()
+
+origins=[
+    "http://192.168.211.:8000",
+    "http://localhost",
+    "http://localhost:8080",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/")
+async def main():
+    return {"message":"Hello World"}
+*******************************************************
+
+
+
+
+
+*******************************************************
+*******************************************************
+*******************************************************
+*******************************************************
+*******************************************************
+*******************************************************
+*******************************************************
