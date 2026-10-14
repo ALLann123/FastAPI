@@ -1,0 +1,284 @@
+=================SQL Databases===============
+- We can use any relational database to perform CRUD operations using
+fastAPI
+	> Mysql
+	> Oracle
+	>Sqlite
+
+- SQLAlchemy is the interface between python code and a database. Is an
+object relational mapper
+- Object Relational Mapper: is a programming technique for converting data
+between incompatible type systems in OOP languages.
+- In an ORM system, each class maps to a table in the underlying database.
+- Instead of writing tedious db interfacing code yourself, an ORM takes care
+of these issues for you while you can focus on programming the logic of
+the system.
+- Install:
+	cmd>> uv pip install sqlalchemy
+- SQLAlchemy is designed to operate with w DBAPI implementation built for 
+a particular database. 
+- Uses dialect system to communicate with various types of DBAPI implementations
+and databases. All dialects require an appropriate DBAPI driver installed.
+- Dialect now SQLite. Create a database engine called test.db
+
+***************************main.py****************************
+#!/usr/bin/python3
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, Session, declarative_base
+from sqlalchemy import Column, Integer, String
+from typing import List
+from pydantic import BaseModel, ConfigDict
+from fastapi import FastAPI, Depends
+import uvicorn
+
+# create our sql db
+SQLALCHEMY_DATABASE_URL="sqlite:///./test.db"
+engine=create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={"check_same_thread":False}
+)
+
+# get the db session handle to interact with it
+session=sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# maps our classes to tables
+Base=declarative_base()
+
+"""
+Books class, a subclass of Base is mapped to a book table
+in the database
+
+create_all() --> creates the tables in the database
+"""
+class Books(Base):
+    __tablename__='book'
+    id=Column(Integer, primary_key=True, nullable=False)
+    title=Column(String(50), unique=True)
+    author=Column(String(50))
+    publisher=Column(String(50))
+
+#Create the table in the database
+Base.metadata.create_all(bind=engine)
+
+# pydantic model that corresponds to the declarative base subclass
+class Book(BaseModel):
+    id:int
+    title:str
+    author:str
+    publisher:str
+
+    model_config=ConfigDict(from_attributes=True)
+    
+app=FastAPI()
+
+def get_db():
+    db=session()
+    try:
+        yield db
+    finally:
+        db.close()
+
+@app.post('/add_new', response_model=Book)
+def add_book(b1:Book, db:Session=Depends(get_db)):
+    bk=Books(
+        id=b1.id,
+        title=b1.title,
+        author=b1.author,
+        publisher=b1.publisher
+    )
+    db.add(bk)
+    db.commit()
+    db.refresh(bk)
+    return bk
+
+@app.put('/update/{id}', response_model=Book)
+def update_book(id:int, book:Book, db: Session = Depends(get_db)):
+   b1 = db.query(Books).filter(Books.id == id).first()
+   b1.id=book.id
+   b1.title=book.title
+   b1.author=book.author
+   b1.publisher=book.publisher
+   db.commit()
+   return db.query(Books).filter(Books.id == id).first()
+
+@app.delete('/delete/{id}')
+def del_book(id:int, db: Session = Depends(get_db)):
+   try:
+      db.query(Books).filter(Books.id == id).delete()
+      db.commit()
+   except Exception as e:
+      raise Exception(e)
+   return {"delete status": "success"}
+
+# lists records from our db
+@app.get('/list', response_model=List[Book])
+def get_books(db:Session=Depends(get_db)):
+    recs=db.query(Books).all()
+    return recs
+
+# returns results according to the id passed
+@app.get('/book/{id}', response_model=Book)
+def get_book(id:int, db:Session=Depends(get_db)):
+    return db.query(Books).filter(Books.id==id).first()
+
+
+# start our server
+if __name__=="__main__":
+    #start our server
+    uvicorn.run("22_db_interact:app", host="127.0.0.1", port=8000, reload=True)
+**************************************************************
+
+
+=================MongoDB===============
+- FastAPI can use NoSQL databases such as MongoDB, Redis, Cassandra, CouchDB, etc
+as the backend for CRUD operations of a REST app.
+- MongoDB is a document oriented database, in which the semi-structured
+documents are stored in formats like JSON.
+- One or more such documents are stored in a collection.
+- A Collection in MongoDB is equivalent to a table in relational database.
+- However NoSQL dbs have no predefined schema.
+- Install:
+	cmd>> uv pip install pymongo
+
+================GraphQL===================
+- GraphQL is the data query and manipulation language for the API.
+- GraphQL is more flexible, efficient, and accurate as compared to REST
+- GraphQL provides a single endpoint and responds with the precise data
+required by the client.
+- Libraries for GraphQL:
+	> Strawberry
+	> Ariadne
+	> Tartiflette
+	> Graphene
+
+=========using Strawberry to Integrate GraphQL=========
+- FastAPI recommends using strawbery library as its design is also based
+on type annotations(as in the case of FastAPI)
+- Installation:
+	cmd>> uv pip install "strawberry-graphql[cli]"
+
+
+==================WebSockets=========================
+- Is a persistent connection between a client and server to provide bidirectional,
+full-duplex communication between the two.
+- The communication takes place over HTTP through a single TCP/IP socket
+connection.
+- Real-time applications can be built with websocket APIs
+
+************main.py*********************
+#!/usr/bin/python3
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+import uvicorn
+
+templates=Jinja2Templates(directory="templates")
+
+app=FastAPI()
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/", response_class=HTMLResponse)
+async def index(request:Request):
+    return templates.TemplateResponse("socket.html", {"request":request})
+
+
+# start our server
+if __name__=="__main__":
+    #start our server
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+***************************************
+- The index() function renders socket.html when the request is the root
+directory.
+
+*********socket.html*******************
+<html>
+
+<head>
+    <title>Chat</title>
+    <script src="{{url_for('static', path='ws.js')}}"></script>
+</head>
+
+<body>
+    <h1>WebSocket Chat</h1>
+    <form action="" onsubmit="sendMessage(event)">
+        <input type="text" id="messageText" autocomplete="off" />
+        <button>Send</button>
+    </form>
+    <ul id="messages"></ul>
+</body>
+
+</html>
+***************************************
+- Inside the html code we call a JS function to execute when form is submited
+- Js function code is in static folder which we mounted in fastAPI main.py
+
+************ws.js**********************
+var ws = new WebSocket("ws://localhost:8000/ws");
+ws.onmessage = function(event) {
+    var messages = document.getElementById('messages')
+    var message = document.createElement('li')
+    var content = document.createTextNode(event.data)
+    message.appendChild(content)
+    message.appendChild(message)
+};
+
+function sendMessage(event) {
+    var input = document.getElementById('messageText')
+    ws.send(input.value)
+    input.value = ''
+    event.preventDefault()
+}
+***************************************
+
+- Add the websocket_endpoint() funciton in the application code.
+- The incoming connection request is accepted and the incoming message is
+echoed on the client browser.
+********************************
+@app.websocket("/ws")
+async def websocket_endpoint(websocket:WebSocket):
+    await websocket.accept()
+    while True:
+        data=await websocket.receive_text()
+        await websocket.send_text(f"Message text was: {data}")
+********************************
+
+
+===================Mounting a Sub App==================
+- Two independent FastAPI apps
+- One can be mounted on top of the other
+- The one mounted is called a sub-application.
+- The app_mount() method adds another completely independent app.
+- Below creating a Nested Applications:
+***************************************
+#!/usr/bin/python3
+from fastapi import FastAPI
+import uvicorn
+
+app=FastAPI()
+
+@app.get("/app")
+def mainindex():
+    return {"messages":"Hello World from Top level app"}
+
+#another app
+subapp=FastAPI()
+@subapp.get("/sub")
+def subindex():
+    return {"message":"Hello World from subapp"}
+
+#mount the app
+app.mount("/subapp", subapp)
+
+# start our server
+if __name__=="__main__":
+    #start our server
+    uvicorn.run("24_nested_app:app", host="127.0.0.1", port=8000, reload=True)
+***************************************
+- The main App is on:
+	http://127.0.0.1:8000/docs
+- For the subapp:
+	http://127.0.0.1:8000/subapp/docs
+
+
