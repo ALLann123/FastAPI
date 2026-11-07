@@ -1,0 +1,602 @@
+============ChatApp with REACT+FastAPI===============
+- Goal build a chat app running on our own hardware.
+- Model:
+	`qwen2.5:3b-instruct`
+- LangChain and Ollama
+- Our backend(FastAPI) runs on the mobile device while our frontend on 
+windows PC(React)
+=============Big Picture===============
+ Browser (React)            Server (FastAPI)           Your computer
+┌────────────────┐  POST   ┌─────────────────┐       ┌───────────────┐
+│  Chat page     │ ──────► │  /chat endpoint │ ────► │ LangChain     │
+│                │         │                 │       │   │           │
+│  shows text    │ ◄────── │  StreamingResp. │ ◄──── │   ▼           │
+│  as it arrives │ chunks  └─────────────────┘ token │ Ollama +      │
+└────────────────┘                                   │ qwen2.5:3b    │
+                                                     └───────────────┘
+
+============Why Streaming Matters?=============
+- The user does not wait for the whole answer.
+- The chunks are outputed as they are generated.
+
+- Start Ollama:
+	$ ollama serve
+N/B: Make sure ollama server is running
+
+=========File structure=============
+ollama-chat/
+├── backend/
+│   ├── main.py              ← the FastAPI server
+│   └── requirements.txt
+└── frontend/
+    ├── index.html
+    ├── vite.config.js
+    └── src/
+        ├── main.jsx         ← starts React (already created for us)
+        ├── App.jsx          ← the main screen and all the chat logic
+        ├── api.js           ← talks to the server
+        ├── index.css        ← the dark theme
+        └── components/
+            ├── Message.jsx
+            ├── ChatInput.jsx
+            └── EmptyState.jsx
+
+N/B: The backend will be run on the mobile device.---> Termux🚀🎉
+
+
+
+===============PART 1: Backend====================
+- New code:
+	> Add CORS middleware
+	> A new POST /chat that receives the whole conversation
+	> A system propmt that sets its behavior
+	> A try/except that sends a readable error
+	> host="0.0.0.0" listening on every network interface.
+
+- Create backend/main.py:
+*********************main.py****************************
+#!/usr/bin/python3
+from typing import Literal
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_ollama import ChatOllama
+from pydantic import BaseModel
+import uvicorn
+
+#---Setting
+MODEL_NAME="qwen2.5:3b-instruct"
+SYSTEM_PROMPT=(
+    "You are called Mr.Robot. A cyberSecurity assistant" \
+    "Keep Answers clear and concise. Make them short as possible" \
+    "Use Markdown when it helps, and put code in fenced code blocks"
+)
+
+# only send the last 20 messages to the model
+MAX_HISTORY=20
+
+#----Create the App
+app=FastAPI(title="Local LLM Chat API")
+# CORS: Allows the React Dev Server call this API
+# without this the browser blocks the request
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://192.168.1.100:5173",
+        "http://192.168.1.106:3000", #our machine IP address
+        "http://192.168.1.106:5173",
+    ],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Connect LangChain to our local model
+llm = ChatOllama(
+    model=MODEL_NAME,
+    temperature=0.1,
+)
+
+
+
+# ------Request Shapes(Pydantic Validates incoming JSON for us)
+class ChatMessage(BaseModel):
+    role:Literal["user", "assistant"]
+    content: str
+
+class ChatRequest(BaseModel):
+    messages: list[ChatMessage]
+
+# Helpers
+def to_langchain_messages(messages: list[ChatMessage]):
+    """Turn our simple messages into LangChain message objects."""
+    result=[SystemMessage(content=SYSTEM_PROMPT)]
+    for m in messages[-MAX_HISTORY:]:
+        if m.role=="user":
+            result.append(HumanMessage(content=m.content))
+        else:
+            result.append(AIMessage(content=m.content))
+    return result
+
+
+def generate_response(prompt):
+    """
+    Stream the model's reply piece by piece
+    `prompt` can be a plain string or a list of langchain messages.
+    """
+    try:
+        for chunk in llm.stream(prompt):
+            # Send each piece of text as soon as it is generated
+            yield chunk.content
+
+    except Exception as error:
+        # By now the response has already started (status 200) so we
+        # send the error as text and let the browser show it
+        yield(
+            f"\n\nCould not reach the model ({error})"
+            "Is Ollama running? Try `ollama serve`."
+        )
+
+
+STREAM_HEADERS={
+    "Cache-Control":"no-cache",
+    "X-Accel-Buffering": "no",  # stops proxies like nginx from buffering
+}
+
+#-------------------------
+#   Endpoints
+#-------------------------
+# test endpoint(check is the server up)
+@app.get("/")
+def home():
+    return {
+        "message":"FastAPI+OLLAMA+QWEN streaming API",
+        "model":MODEL_NAME
+    }
+
+# Original streaming endpoint: One message, handy for curl tests
+@app.get("/chat")
+def chat_simple(message: str):
+    return StreamingResponse(
+        generate_response(message),
+        media_type="text/plain",
+        headers=STREAM_HEADERS,
+    )
+
+# Chat enpoint for React: receives the whole conversation so the
+# model remembers what was said earlier
+@app.post("/chat")
+def chat(request: ChatRequest):
+    return StreamingResponse(
+        generate_response(to_langchain_messages(request.messages)),
+        media_type="text/plain",
+        headers=STREAM_HEADERS,
+    )
+
+
+# start our server
+if __name__ == "__main__":
+    # 0.0.0.0 = listen on every network interface, so both
+    # localhost and 192.168.1.100 work
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+********************************************************
+Understanding the new parts:
+- Models have no memory.
+- To make the model remember the frontend sends the entire conversation.
+{
+  "messages": [
+    { "role": "user",      "content": "My name is Sam." },
+    { "role": "assistant", "content": "Nice to meet you, Sam!" },
+    { "role": "user",      "content": "What's my name?" }
+  ]
+}
+
+
+========================FrontEnd====================
+- React will handle the user UI
+- Create project with vite.
+- Create project:
+	cmd>> npm create vite@latest frontend -- --template react
+- Vite is a tool that sets up a React Project and gives you a fast dev server.
+- Install the "react-markdown" the one extra package.
+	cmd>> npm install react-markdown
+- LLMs answer in markdown(###headings, **bold**, and triple-backtick). This 
+package turns that text into proper HTML.
+- Make the react reachable over the network by replacing vite.config.js
+*********************vite.config.js*********************
+import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite'
+
+// https://vite.dev/config/
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    host: true, // also listen on your network IP (e.g. 192.168.1.100)
+    port: 5173,
+  },
+})
+********************************************************
+
+==========Talking to the server=========
+- src/api.js
+- Javascript file that does the networking
+*********************src/api.js*************************
+//Get our server IP
+export const API_URL =
+    import.meta.env.VITE_API_URL || `http://${window.location.hostname}:8000`
+
+// check server availability and which model is running
+export async function checkServer() {
+    const response = await fetch(`${API_URL}`)
+    if (!response.ok) throw new Error('Server responded with an error')
+    return response.json()
+}
+
+// Send the conversation and read the reply as it streams in
+// messages->[{role: 'user' | 'assistant', content:'...'}]
+// onToken-> called with each new piece of text
+// signal-> lets us cancel the request(the stop button)
+export async function streamChat(messages, onToken, signal) {
+    let response
+    try {
+        response = await fetch(`${API_URL}/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages }),
+            signal,
+        })
+    } catch (error) {
+        if (error.name === 'AbortError') throw error
+        throw new Error(`Can't reach the server at ${API_URL}. Is FastAPI running?`)
+    }
+
+    if (!response.ok) {
+        throw new Error(`Server error (${response.status})`)
+    }
+
+    //The body arrives in chunks. Read them one by one until the stream ends
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+
+    while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+            //stream: true keeps characters that are split across chunks intact
+        onToken(decoder.decode(value, { stream: true }))
+    }
+}
+********************************************************
+- Stream does not wait for the whole body, allows us to grab the data as it
+arrives.
+- The `while` loop calls reader.read() repeatedly; each call returns the
+next chunck of bytes. Decode the chunk into text and hand them to onToken
+
+
+
+============One Chat Message===========
+- src/components/Message.jsx
+- A React component is a function receives inputs and return JSX
+HTML but lives inside JavaScript
+*********************Message.jsx************************
+import ReactMarkdown from 'react-markdown'
+
+export default function Message({message, isStreaming}){
+    const isUser=message.role==='user'
+    const isWaiting=isStreaming && message.content===''
+
+    if(isUser){
+        return (
+            <div className='message message-user'>
+                <div className='bubble'>
+                    {message.content}
+                </div>
+            </div>
+        )
+    }
+
+    return (
+        <div className='message message-assistant'>
+            {isWaiting?(
+                <span className='thinking' role='status' aria-label='Thinking'>
+                    <i/>
+                    <i/>
+                    <i/>
+                </span>
+            ): (
+                <div
+                    className={[
+                        'markdown',
+                        isStreaming?'is-streaming':'',
+                        message.isError?'is-error':'',
+                    ].join(' ')}
+                >
+                    {/*The model answers in Markdown: headings, lists, code blocks */}
+                    <ReactMarkdown>{message.content}</ReactMarkdown>
+                </div>
+            )}
+        </div>
+    )
+}
+********************************************************
+- Notice three cases:
+	your message(a plain bubble)
+	the assistant before its first word arrives(three pulsing dots)
+	the assistants formatted reply
+- JSX tips: className is how you write HTML's class. And {...} inside JSX
+means "run this JS here"
+
+
+==========the text box=============
+- src/components/ChatInput.jsx: the text box
+*********************ChatInput.jsx**********************
+import {useRef, useState} from 'react'
+
+export default function ChatInput({onSend, onStop, isStreaming}){
+    const [text, setText]=useState('')
+    const textareaRef=useRef(null)
+
+    //make the box grow with the text, up to a limit
+    function resize(){
+        const box=textareaRef.current
+        box.style.height='auto'
+        box.style.height=`${Math.min(box.scrollHeight, 200)}px`
+    }
+
+    function handleChange(event){
+        setText(event.target.value)
+        resize()
+    }
+
+    function submit(){
+        const trimmed=text.trim()
+        if(!trimmed || isStreaming) return
+        onSend(trimmed)
+        setText('')
+        textareaRef.current.style.height='auto'
+    }
+
+    function handleKeyDown(event){
+        //Enter sends. Shift+Enter adds a new line
+        if(event.key==='Enter' && !event.shiftKey){
+            event.preventDefault()
+            submit()
+        }
+    }
+
+
+    return (
+        <footer className='composer'>
+            <div className='composer-box'>
+                <textarea
+                    ref={textareaRef}
+                    value={text}
+                    onChange={handleChange}
+                    onKeyDown={handleKeyDown}
+                    placeholder='Ask anything. Enter to send!'
+                    rows={1}
+                    autoFocus
+                />
+                {isStreaming?(
+                    <button
+                        className='round-button stop'
+                        onClick={onStop}
+                        aria-label='Stop generating'
+                        title='Stop generating'
+                    >
+                        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                        <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" />
+                        </svg>                      
+                    </button>
+                ):(
+                    <button
+                        className='round-button send'
+                        onClick={submit}
+                        disabled={!text.trim()}
+                        aria-label='Send message'
+                        title='Send message'
+                    >
+                        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                        <path
+                            d="M12 19V5M5 12l7-7 7 7"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                        />
+                        </svg>
+                    </button>
+                )}
+            </div>
+        </footer>
+    )
+}
+********************************************************
+- We have state. text is what we are tracking and setText is used to set
+the value of text.
+- useRef is different, it points straight at the real <textarea> element so 
+we can measure it and resize it.
+
+
+===========The welcome Screen========
+- src/components/EmptyState.jsx
+*********************EmptyState.jsx*********************
+const SUGGESTIONS=[
+  'Explain Python functions',
+  'How do I read a file in Python?',
+  'What is the difference between a list and a tuple?',   
+]
+
+export default function EmptyState({onPick}){
+    return (
+        <div className="empty">
+            <h2>What do you want to learn today?</h2>
+            <p>The models runs locally</p>
+            <div className="suggestions">
+                {SUGGESTIONS.map((suggestion)=>(
+                    <button key={suggestion} onClick={()=>onPick(suggestion)}>
+                        {suggestion}
+                    </button>
+                ))}
+            </div>
+        </div>
+    )
+}
+********************************************************
+- Turns the array list into buttons. 
+- Key helps track which item is which.
+- Clicking a button calls onPick, which we'll connect to "send this message"
+
+
+
+==================The Brain=====================
+- Biggest file. Owns all the chat data and passes it down to the componets
+- src/App.jsx
+*********************App.jsx****************************
+import { useState, useRef, useState, useEffect } from "react";
+import { checkServer, streamChat } from "./api";
+import ChatInput from "./components/ChatInput";
+import EmptyState from "./components/EmptyState";
+import Message from "./components/Message";
+import { context } from "langchain";
+
+//Crypto.randomUUID() only works on https or localhost, so we make our own
+const makeId=()=>`${Date.now()}-${Math.random().toString(36).slice(2)}`
+
+
+export default function App(){
+  // All the things that can change while the App is running
+  const [messages, setMessages]=useState([])
+  const [isStreaming, setIsStreaming]=useState(false)
+  const [server, setServer]=useState({status:'checking', model:''})
+
+  // Refs hold values that should not cause a re-render when they change
+  const abortRef=useRef(null)
+  const bottomRef=useRef(null)
+
+  //Run once when the page loads: is the server up?
+  useEffect(()=>{
+    checkServer()
+    .then((info)=>setServer({status:'online', model:info.model}))
+    .catch(()=>setServer({status:'offline', model:''}))
+  }, [])
+
+  // Everytime messages change, scroll to the neweset text
+  useEffect(()=>{
+    bottomRef.current?.scrollIntoView({block:'end'})
+  },[messages])
+
+
+  //Update one message by id(used to greow the assistant's reply)
+  function updateMessage(id, changes){
+    setMessages((previous)=>
+    previous.map((m)=>(m.id===id?{...m, ...changes(m)}:m)),
+  )
+  }
+
+  async function sendMessage(text){
+    const userMessage={id:makeId(), role:'user', content:text}
+    const assistantMessage={id:makeId(), role:'assistant', content:''}
+
+    //The model gets the whole conversation so it remembers context
+    // We skip the empty replies(stopped early and error messages)
+    const history=[...messages, userMessage]
+    .filter((m)=> m.content.trim() !=='' && !m.isError)
+    .map(({role, content})=> ({role, content}))
+
+
+    //shows the user's message and an empty assistant bubble right away
+    setMessages([...messages, userMessage, assistantMessage])
+    setIsStreaming(true)
+
+    const controller=new AbortController()
+    abortRef.current=controller
+
+    try{
+      await streamChat(
+        history,
+        (token)=>
+          updateMessage(assistantMessage.id, (m)=>({
+            content:m.content+token,
+          })),
+          controller.signal,
+      )
+    }catch(error){
+      //Stopping on purpose is not an error
+      if(error.name!=='AbortError'){
+        updateMessage(assistantMessage.id,(m)=>({
+          content:m.content+ `\n\n ${error.Message}`,
+          isError:true
+        }))
+      }
+    } finally{
+      setIsStreaming(false)
+      abortRef.current=null
+    }
+  }
+
+  function stopStreaming(){
+    abortRef.current?.abort()
+  }
+
+  function newChat(){
+    abortRef.current?.abort()
+    setMessages([])
+  }
+
+  return(
+    <div className="app">
+      <header className="header">
+        <h1 className="title">Local Chat</h1>
+
+        <div className="header-right">
+          <span className={`status status-${server.status}`}>
+            <span className="status-dot"/>
+              {server.status==='online' && server.model}
+              {server.status==='offline' && 'Server offline'}
+              {server.status==='checking' && 'Connecting'}  
+            </span>
+            <button
+              className="ghost-button"
+              onClick={newChat}
+              disabled={messages.length===0}
+            >
+              New Chat
+            </button>
+        </div>
+      </header>
+
+      <main className="messages">
+        <div className="thread">
+          {messages.length===0?(
+            <EmptyState onPick={sendMessage}/>
+          ):(
+            messages.map((message, index)=>(
+              <Message
+                key={message.id}
+                message={message}
+                isStreaming={isStreaming && index===messages.length-1}
+              />
+            ))
+          )}
+          <div ref={bottomRef}/>
+        </div>
+      </main>
+
+      <ChatInput
+        onSend={sendMessage}
+        onStop={stopStreaming}
+        isStreaming={isStreaming}
+      />
+    </div>
+  )
+}
+********************************************************
+- SendMessage function
+1. Two messages: user and assistant(left blank)
+2. Build history to send whole conversation minus empty or error messages
+3. Show both messages immediately.
+4. Allows user to abort the incoming message
+- useEffect checks the server status. It also moves us to the newest message
