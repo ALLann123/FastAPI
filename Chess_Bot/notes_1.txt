@@ -1,0 +1,229 @@
+=========Install Libraries===========
+- Run:
+	cmd>> uv pip install fastmcp python-chess
+- Download the native C++ binaries for the engine:
+	stockfishchess.org/download
+************************chess_mcp_server.py***************************
+#!/usr/bin/python3
+import atexit
+import os
+
+import chess
+import chess.engine
+from fastmcp import FastMCP
+
+DEFAULT_STOCKFISH_PATH = r"J:\14_talk_back\stockfish\stockfish-windows-x86-64-universal.exe"
+
+# Create the MCP server. The name is what clients see when they connect.
+mcp = FastMCP("chess-server")
+
+# One game held in memory (fine for now; we can key by game_id later).
+board = chess.Board()
+
+# Stockfish is launched lazily, so the server starts even if it is missing.
+_engine: chess.engine.SimpleEngine | None = None
+
+
+def _get_engine() -> chess.engine.SimpleEngine:
+    """Return the running Stockfish engine, starting it on first use."""
+    global _engine
+    if _engine is None:
+        # Environment variable wins; otherwise use the default path above.
+        path = os.getenv("STOCKFISH_PATH", DEFAULT_STOCKFISH_PATH)
+        # Launch Stockfish as a subprocess and talk to it over UCI.
+        _engine = chess.engine.SimpleEngine.popen_uci(path)
+    return _engine
+
+
+@atexit.register
+def _shutdown() -> None:
+    """Cleanly stop the Stockfish subprocess when the server exits."""
+    if _engine is not None:
+        _engine.quit()
+
+
+def _state() -> dict:
+    """Build a JSON-friendly snapshot of the game, returned by several tools."""
+    return {
+        # FEN is a compact text encoding of the full position.
+        "fen": board.fen(),
+        "turn": "white" if board.turn == chess.WHITE else "black",
+        "move_number": board.fullmove_number,
+        # Replays the moves from a fresh board to produce readable notation
+        # like "1. e4 e5 2. Nf3". Empty string if no moves have been played.
+        "history_san": chess.Board().variation_san(board.move_stack)
+        if board.move_stack
+        else "",
+        "in_check": board.is_check(),
+        "game_over": board.is_game_over(),  # checkmate, stalemate, draw rules...
+        "result": board.result() if board.is_game_over() else None,  # "1-0", "0-1", "1/2-1/2"
+        # Plain-text picture of the board, handy for logging or LLM prompts.
+        "ascii": str(board),
+    }
+
+
+@mcp.tool
+def new_game(fen: str | None = None) -> dict:
+    """Start a new game from the standard position, or from a given FEN."""
+    global board  # we replace the board object, so we must declare it global
+    board = chess.Board(fen) if fen else chess.Board()
+    return _state()
+
+
+@mcp.tool
+def get_state() -> dict:
+    """Return the current position: FEN, side to move, history, game status."""
+    return _state()
+
+
+@mcp.tool
+def legal_moves() -> list[dict]:
+    """List all legal moves for the side to move, in UCI and SAN."""
+    # UCI = coordinate form ("e2e4"); SAN = human form ("e4", "Nf3", "O-O").
+    return [{"uci": m.uci(), "san": board.san(m)} for m in board.legal_moves]
+
+
+@mcp.tool
+def make_move(move: str) -> dict:
+    """Play a move given in UCI (e2e4) or SAN (e4, Nf3). Rejects illegal moves."""
+    try:
+        try:
+            # Try UCI first ("e2e4"); raises ValueError if it doesn't parse
+            # or isn't legal in the current position.
+            mv = board.parse_uci(move)
+        except ValueError:
+            # Fall back to SAN ("Nf3"); also raises ValueError if invalid.
+            mv = board.parse_san(move)
+    except ValueError:
+        # Return an error instead of crashing, so the caller can retry.
+        return {"ok": False, "error": f"Illegal or unparseable move: {move}"}
+    # Compute SAN BEFORE pushing: SAN depends on the position it's played from.
+    san = board.san(mv)
+    board.push(mv)
+    return {"ok": True, "played": san, "state": _state()}
+
+
+@mcp.tool
+def undo_move() -> dict:
+    """Take back the last move."""
+    if not board.move_stack:
+        return {"ok": False, "error": "No moves to undo"}
+    board.pop()
+    return {"ok": True, "state": _state()}
+
+
+@mcp.tool
+def analyse(think_time: float = 0.5, candidates: int = 3) -> list[dict]:
+    """
+    Ask Stockfish for the best candidate moves.
+    Scores are in centipawns from the side-to-move's point of view
+    (mate scores are large numbers; `mate_in` is set when a forced mate exists).
+    """
+    # No moves to suggest once the game has ended.
+    if board.is_game_over():
+        return []
+    # multipv > 1 makes Stockfish return several ranked lines instead of one.
+    # Limit(time=...) caps how many seconds it may think.
+    infos = _get_engine().analyse(
+        board,
+        chess.engine.Limit(time=think_time),
+        multipv=max(1, candidates),
+    )
+    results = []
+    for info in infos:
+        pv = info.get("pv")  # "principal variation": the engine's best line
+        if not pv:
+            continue
+        # .pov(board.turn) expresses the score from the mover's perspective,
+        # so positive always means "good for the side about to move".
+        score = info["score"].pov(board.turn)
+        results.append(
+            {
+                "uci": pv[0].uci(),        # first move of the line
+                "san": board.san(pv[0]),   # same move in human notation
+                # Convert mate scores into a big number so cp is always an int.
+                "cp": score.score(mate_score=100_000),
+                # Moves until forced mate (negative = we get mated), else None.
+                "mate_in": score.mate(),
+                "depth": info.get("depth"),  # how deep the engine searched
+            }
+        )
+    return results
+
+
+if __name__ == "__main__":
+    # Starts the server. stdio is the default transport: the client launches
+    # this script as a subprocess and talks to it over stdin/stdout.
+    mcp.run()
+************************************************************************
+
+- Now we need a client to  test our MCP server:
+************************client.py*****************************************
+"""
+Smoke test for chess_mcp_server.py.
+Run from the same folder:  python test_client.py
+"""
+import asyncio
+
+from fastmcp import Client
+
+
+async def main():
+    # Passing a .py path makes FastMCP launch the server as a stdio subprocess.
+    async with Client("chess_mcp_server.py") as client:
+        # 1. Confirm the server exposes our tools.
+        tools = await client.list_tools()
+        print("Tools:", [t.name for t in tools])
+
+        # 2. Start a game and play 1. e4.
+        await client.call_tool("new_game", {})
+        move = await client.call_tool("make_move", {"move": "e4"})
+        print("Played:", move.data["played"])
+
+        # 3. Ask Stockfish for Black's best replies (this also proves the
+        #    Stockfish path is correct).
+        result = await client.call_tool("analyse", {"think_time": 0.3})
+        print("Black's candidates:")
+        for c in result.data:
+            print(f"  {c['san']:6} cp={c['cp']:5} depth={c['depth']}")
+
+
+asyncio.run(main())
+
+"""
+Chess_Bot>python client.py
+Tools: ['new_game', 'get_state', 'legal_moves', 'make_move', 'undo_move', 'analyse']
+Played: e4
+Black's candidates:
+  c5     cp=  -35 depth=11
+  e5     cp=  -35 depth=11
+  d6     cp=  -41 depth=10
+
+"""
+**************************************************************************
+
+
+============Explanation==========
+- Separate the part of the bot that has to be correct(mcp) from the part
+responsible for creativity(LLM).
+- LLMs can't be trusted with chess rules.
+- LangGraph is for agent orchestration. Routes states between steps but
+knows nothing about chess. 
+- MCP server is the single source of truth.
+- Agent has no idea the logic about the tools just can make tool calls
+- Stockfish provides ground truth, analyse returns ranked candidates moves
+with scores. Agent doesn't have to figure out chess only decide what to
+do with strong options.
+
+
+
+=================Step 2: The Agent====================
+- Agent that plays a full game through the MCP chess server.
+- The graph(no LLM yet, so no API is needed):
+    START -> setup -> observe --(bot's turn)------> think -----> play --+
+                         ^   \\--(opponent's turn)-> opponent -> play --+
+                         |                                             |
+                         +---------------------------------------------+
+                         \\--(game over)-> END
+Setup:
+	cmd>> uv pip install langgraph
