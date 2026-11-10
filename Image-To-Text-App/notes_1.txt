@@ -1,0 +1,28 @@
+============Build an Image-to-Text App=========
+Algorithm
+1. Pick a picture in the browser(React)
+2. The picture is sent to the python server(FastAPI)
+3. The server cleans the image using openCV and reads the text with tesseract
+4. The text is sent back and shown on the page.
+
+- Make sure to install tesseract.exe if on windows. The pytesseract is a 
+a wrapper library.
+===========Libraries=========
+	cmd>> uv pip install opencv-python pytesseract fastapi uvicorn python-multipart
+- Our backend code is in main.py
+- Run it:
+	cmd>> uvicorn main:app --reload
+
+============Frontend=============
+- Create our react vite app:
+	cmd>> npm create vite@latest frontend -- --template react
+
+*************Extracted text**************
+Hello,
+
+Product bought: Milk
+Price: $10
+******************************************
+
+- To run on the IP:
+	cmd>> npm run dev -- --host
