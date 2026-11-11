@@ -1,0 +1,509 @@
+================Voice Recorde======================
+- Record our voice, preview it and save to our server.
+- Saved recordings show up in a list where you can play, download and delete
+
+N/B: Browsers allow microphone access on secure pages(https) or localhost
+voice-recorder/
+├── backend/
+│   ├── main.py                  ← the FastAPI server
+│   ├── requirements.txt
+│   └── recordings/              ← created automatically; audio files live here
+└── frontend/
+    ├── index.html
+    └── src/
+        ├── main.jsx             ← starts React (already created for us)
+        ├── App.jsx              ← the page: holds the list of recordings
+        ├── api.js               ← all calls to the server
+        ├── format.js            ← tiny helpers: "1:15", "33 KB", dates
+        ├── index.css            ← the dark theme
+        └── components/
+            ├── Recorder.jsx     ← the microphone part (the interesting one)
+            ├── RecordingList.jsx
+            └── RecordingItem.jsx
+
+=================The Backend================
+- Add the library:
+	cmd>> uv pip install python-multipart
+- The library is usedful to read the uploaded audio files.
+========Endpoints==========
+1. POST 	/recordings		Receive an audio file and save it
+2. GET		/recordings		List saved recordings, newest first
+3. GET		/recordings/{id}/audio	Send one file back(play or download)
+4. DELETE	/recordings/{id}	Delete one
+- All audio is stored in the records directory
+	20261007-143015-a1b2c3.webm
+(date, time, random part)
+
+********************************main.py********************************
+#!/usr/bin/python3
+from datetime import datetime, timezone
+from pathlib import Path
+import re
+from uuid import uuid4
+
+from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+import uvicorn
+
+
+# settings
+BASE_DIR=Path(__file__).parent
+RECORDINGS_DIR=BASE_DIR/ "recordings"  # audio files are saved here
+RECORDINGS_DIR.mkdir(exist_ok=True)   # create the folder if missing
+
+# decline files bigger than 25MB
+MAX_BYTES=25*1024*1024
+
+# Browsers record in different formats
+# audio type-> file extension we save it with
+ALLOWED_TYPES = {
+    "audio/webm": "webm",
+    "audio/ogg": "ogg",
+    "audio/mp4": "m4a",
+    "audio/mpeg": "mp3",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+}
+# file extension  ->  audio type we tell the browser when playing it back
+EXTENSION_TO_TYPE = {
+    "webm": "audio/webm",
+    "ogg": "audio/ogg",
+    "m4a": "audio/mp4",
+    "mp3": "audio/mpeg",
+    "wav": "audio/wav",
+}
+
+#prevent path traversal attack
+ID_PATTERN = re.compile(r"^\d{8}-\d{6}-[0-9a-f]{6}$")
+
+
+# Create the APP
+app=FastAPI(title="Voice Recorder API")
+
+# CORS: allow the react dev server to call our API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# What we send back to the browser
+class Recording(BaseModel):
+    id: str
+    filename:str
+    size_bytes:int
+    created_at:datetime
+
+
+# Helpers
+def describe(path:Path)->Recording:
+    """Build a recording from a file on disk"""
+    # The first 15 characters of the name are the date and time(in UTC)
+    created=datetime.strptime(path.stem[:15], "%Y%m%d-%H%M%S")
+    return Recording(
+        id=path.stem,
+        filename=path.name,
+        size_bytes=path.stat().st_size,
+        created_at=created.replace(tzinfo=timezone.utc),
+    )
+
+def find_file(recording_id: str)-> Path:
+    """Find the file for an id, or answer 404(not founc)"""
+    if ID_PATTERN.match(recording_id):
+        for path in RECORDINGS_DIR.glob(f"{recording_id}.*"):
+            return path
+        raise HTTPException(status_code=404, detail="Recording not found")
+
+
+# Endpoints
+@app.get("/")
+def home():
+    return {"message":"Voice Recorder API", "saved":len(list_recordings())}
+
+# save a new recording
+@app.post("/recordings",response_model=Recording, status_code=201)
+async def upload_recording(file:UploadFile):
+    # 1. Check the type. The browser says "audio/webm;codecs=opus".
+    # so we cut of everything after the ';'
+    audio_type=(file.content_type or "").split(";")[0].strip().lower()
+    if audio_type not in ALLOWED_TYPES:
+        raise HTTPException(status_code=415, detail=f"Unsupported file type: {audio_type or 'unknown'}")
+
+    # 2. Make our own safe file name
+    now=datetime.now(timezone.utc)
+    recording_id=f"{now:%Y%m%d-%H%M%S}-{uuid4().hex[:6]}"
+    path=RECORDINGS_DIR/f"{recording_id}.{ALLOWED_TYPES[audio_type]}"
+
+    # 3. Save it in 1MB pieces, stopping if it gets too big
+    size=0
+    too_big=False
+    with open(path, "wb") as out:
+        while chunk:=await file.read(1024 * 1024):
+            size+=len(chunk)
+            if size> MAX_BYTES:
+                too_big=True
+                break
+            out.write(chunk)
+
+    if too_big or size==0:
+        path.unlink() # remove the half-written file
+        if too_big:
+            raise HTTPException(status_code=413, detail="Recording too big")
+        raise HTTPException(status_code=400, detail="The recording is empty")
+    return describe(path)
+
+# list eery saved recording, neweset first
+@app.get("/recordings", response_model=list[Recording])
+def list_recordings():
+    files=[
+        Path
+        for path in RECORDINGS_DIR.iterdir()
+        if ID_PATTERN.match(path.stem) and path.suffix[1:] in EXTENSION_TO_TYPE
+    ]
+
+    # The names start with the date, so sorting te names sorts by time
+    return [describe(path) for path in sorted(files, reverse=True)]
+
+
+# play(or download) recording
+@app.get("/recordings/{recording_id}/audio")
+def get_audio(recording_id: str, download:bool=False):
+    path=find_file(recording_id)
+    return FileResponse(
+        path,
+        media_type=EXTENSION_TO_TYPE[path.suffix[1:]],
+        filename=path.name,
+        # inline=play in the page, attachment= save to disk
+        content_disposition_type="attachment" if download else "inline"
+    )
+
+# Delete one recording
+@app.delete("/recordings/{recording_id}")
+def delete_recording(recording_id: str):
+    find_file(recording_id).unlink()
+    return {"deleted":recording_id}
+
+# start our server
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+***********************************************************************
+- We have validation to prevent path traversal vulnerabilities
+- Time to test it:
+	cmd>> curl -X POST http://localhost:8000/recordings -F "file=@test.wav;type=audio/mpeg"
+*******************************************************
+backend>curl -X POST http://localhost:8000/recordings -F "file=@test.wav;type=audio/mpeg"
+{"id":"20261008-070838-9f3581","filename":"20261008-070838-9f3581.mp3","size_bytes":160044,"created_at":"2026-10-08T07:08:38Z"}
+*******************************************************
+
+====================Frontend=====================
+- React comes to play
+- Create project:
+	cmd>> npm create vite@latest frontend -- --template react
+
+=========Talking to the server=======
+- src/api.js 
+*********************api.js***********************************
+//get the location of our server from the .env
+export const API_URL =
+    import.meta.env.VITE_API_URL || `http://${window.location.hostname}:8000`
+
+// Helper that evert request goes through
+// Turns network problems and server errors into readable messages
+async function request(path, options) {
+    let response
+    try {
+        response = await fetch(`${API_URL}${path}`, options)
+    } catch {
+        throw new Error(`Can't reach the server at ${API_URL}. Check fastapi is running`)
+    }
+
+    if (!response.ok) {
+        let message = `Server error(${response.status})`
+
+        try {
+            //FastAPI sends errors as {"detail":"..."}
+            const body = await response.json()
+            if (typeof body.detail === 'string') message = body.detail
+        } catch {
+            //body wasn't JSON: keep generic message
+        }
+        throw new Error(message)
+    }
+
+    return response.json()
+}
+
+export function uploadRecording(blob) {
+    //FormData is how browsers send files. It becomes a "multipart" request
+    // which FastAPI reads as an UploadFile
+    // Important: do NOT set a Content-Type header yourself. The  browser adds
+    // it along with a boundary code that the server needs
+    const form = new FormData()
+
+    form.append('file', blob, 'recording')
+    return request('/recordings', { method: 'POST', body: form })
+}
+
+export function deleteRecording(id) {
+    return request(`/recordings/${id}`, { method: 'DELETE' })
+}
+
+//These two don't call fetch. Build links for <audio> and <a> to use
+export function audioUrl(id) {
+    return `${API_URL}/recordings/${id}/audio`
+}
+
+export function downloadUrl(id) {
+    return `${API_URL}/recordings/${id}/audio?download=true`
+}
+***************************************************************
+
+
+*********************format.js*********************************
+import { stringify } from "@langchain/core/utils/uuid"
+
+export function formatTime(totalSeconds) {
+    const minutes = Math.floor(totalSeconds / 60)
+    const seconds = totalSeconds % 60
+    return `${minutes}:${stringify(seconds).padStart(2, '0')}`
+}
+
+
+// 2048-> "2KB"
+export function formatSize(bytes) {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+// "2026-10-07T14:30:15Z" -> "Oct 7, 2026, 5:30 PM" (in the viewer's time zone)
+export function formatDate(isoString) {
+    return new Date(isoString).toLocaleString(undefined, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+    })
+}
+***************************************************************
+-  toLocaleString shows the viewer's own time zone and language
+
+
+==========The Microphone===============
+- src/components/Recorder.jsx
+- Browser tools used:
+> navigator.mediaDevices.getUserMedia--> Asks permission, then gives us a 
+live stream from the micrphone
+> MediaRecorder--> Listens to a stream and produces compressed audion pieces
+> Blob--> A chunk of binary data, like a file that lives in memory
+> URL.createObjecteURL--> Makes a temporary link to a Blob, so an <audio>
+tag can play it.
+*********************Recorder.jsx******************************
+import { useEffect, useRef, useState } from "react";
+import { uploadRecording } from "../api";
+import { formatTime } from "../format";
+
+
+//Browsers can record different audio formats
+// We try these in order
+// and use the first one this browser supports
+const MIME_TYPES=[
+  'audio/webm;codecs=opus', // Chrome, Edge, Firefox
+  'audio/webm',
+  'audio/ogg;codecs=opus',
+  'audio/mp4', // Safari
+]
+
+function pickMimeType(){
+    if(typeof MediaRecorder==='undefined') return ''
+    return MIME_TYPES.find((type)=> MediaRecorder.isTypeSupported(type))|| ''
+}
+
+//Turn the browser's technical error into something a person can act on
+function describeMicError(error){
+    if(error.name==='NotAllowedError'){
+        return 'Microphone access was blocked. Allow it in your browser/u2019s address bar, then try again'
+    }
+    if (error.name==='NotFoundError'){
+        return 'No microphone found. Plug one in and try again'
+    }
+
+    return `Could not start recording: ${error.message}`
+}
+
+
+export default function Recorder({onSaved}){
+    //Status moves through: idle--> recording--> review--> saving--> idle
+    const [status, setStatus]=useState('idle')
+    const [seconds, setSeconds]=useState(0)
+    const [preview, setPreview]=useState(null)// {blob, url} after you stop
+    const [error, setError]=useState('')
+
+    // Refs hold things that must survive re-renders but should NOT trigger
+    const recorderRef=useRef(null) // the MediaRecorder
+    const streamRef=useRef(null) // the live microphone stream
+    const chunksRef=useRef([]) //pieces of audio collected so far
+    const timerRef=useRef(null) //setInterval id for the timer
+
+    // When the component leaves the screen: stop the timer and the microphone
+    useEffect(()=>{
+        return ()=>{
+            clearInterval(timerRef.current)
+            streamRef.current?.getTracks().forEach((track)=> track.stop())
+        }
+    }, [])
+
+    // Whenever the preview changes(or we leave), free the memory it used
+    useEffect(()=>{
+        if(!preview) return
+        return ()=>URL.revokeObjectURL(preview.url)
+    }, [preview])
+
+    async function startRecording(){
+        setError('')
+
+        //Browsers only offer the microphone on https:// pages or on localhost
+        if(!navigator.mediaDevices?.getUserMedia){
+            setError(
+                'This page cannot use the microphone. Open on localhost'
+            )
+        return 
+        }
+
+        try{
+            //1. Ask for the microphone. The browser shows a permission popup
+            const stream=await navigator.mediaDevices.getUserMedia({audio: true})
+            streamRef.current=stream
+
+            //2. Create a recorder that listens to the stream
+            const mimeType=pickMimeType()
+            const recorder=new MediaRecorder(stream, mimeType?{mimeType}:undefined)
+            chunksRef.current=[]
+
+            //3. While recording, the browser hands us audio in small pieces
+            recorder.ondataavailable=(event)=>{
+                if(event.data.size>0) chunksRef.current.push(event.data)
+            }
+
+            //4. When we stop, glue the pieces into one Blob(a file-like object)
+            recorder.onstop=()=>{
+                const blob=new Blob(chunksRef.current, {type: recorder.mimeType})
+                setPreview({blob,url:URL.createObjectURL(blob)})
+                //Release the microphone so the browser's "recording" light goes off
+                stream.getTracks().forEach((track)=> track.stop())
+                setStatus('review')
+            }
+
+            recorder.start()
+            recorderRef.current=recorder
+
+            setSeconds(0)
+            setStatus('recording')
+            timerRef.current=setInterval(()=> setSeconds((s)=> s+1), 1000)
+        } catch (err){
+            setError(describeMicError(err))
+        }
+
+        function stopRecording(){
+            clearInterval(timerRef.current)
+            recorderRef.current.stop()// this triggers recorder.onstop above
+        }
+
+        function discard(){
+            setPreview(null)
+            setSeconds(0)
+            setStatus('idle')
+        }
+
+        async function save(){
+            setStatus('saving')
+            setError('')
+            try{
+                const saved=await uploadRecording(preview.blob)
+                onSaved(saved)  // tell the App so it can add it to the list
+                discard()
+            } catch (err){
+                setError(err.message)
+                setStatus('review')// keep the recording so the person try again
+            }
+        }
+    }
+    const isRecoding=status==='recording'
+    const hasReview=status==='review' || status==='saving'
+
+    return(
+        <section className="recorder" aria-label="Recorder">
+            <div className="timer" role="timer" aria-live="off">
+                {formatTime(seconds)}
+            </div>
+
+            {!hasReview&&(
+                <>
+                <button
+                    className={`record-button ${isRecoding ? 'is-recording': ''}`}
+                    onClick={isRecoding?stopRecording:startRecording}
+                    aria-label={isRecoding?'Stop recording':'Start recording'}
+                >
+                    {isRecoding?(
+                        <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">
+                            <rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor" />
+                        </svg>
+                    ):(
+                        <svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true">
+                            <rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor" />
+                            <path
+                            d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            />
+                        </svg>
+                    )}
+                </button>
+                <P className='hint'>
+                    {isRecoding?'Recoding. Press to stop':'Press to start recording'}
+                </P>
+                </>
+            )}
+
+            {hasReview&&preview&&
+            (
+                <div className="review">
+                    {/*The preview plays from memory. Nothing is saved on the server yet */}
+                    <audio controls src={preview.url}/>
+
+                    <div className="review-actions">
+                        <button className="button primary" onClick={save} disabled={status==='saving'}>
+                            {status==='saving'?'saving...':'Save recording'}
+                        </button>
+
+                        <button className="button" onClick={discard} disabled={status==='saving'}>
+                            Discard
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {error &&(
+                <p className="message error" role="alert">
+                    {error}
+                </p>
+            )}
+        </section>
+    )
+}
+***************************************************************
+
+*********************api.js***********************************
+
+***************************************************************
+
+*********************api.js***********************************
+
+***************************************************************

@@ -1,0 +1,339 @@
+/* =========================================================
+   1. DESIGN TOKENS
+   All colors and fonts live here. Change a value once and
+   the whole app updates.
+   ========================================================= */
+
+:root {
+    --bg: #121317;
+    /* page background: warm charcoal */
+    --surface: #1b1d24;
+    /* the recorder panel */
+    --surface-2: #262933;
+    /* buttons */
+    --border: #2f333f;
+    --text: #eceef3;
+    --muted: #959bab;
+    --rec: #ff5a5f;
+    /* "recording" red: the one bold color */
+    --save: #8ab4ff;
+    /* soft blue for the main action */
+    --save-ink: #0d1626;
+    /* dark text that sits on top of blue */
+    --font-body: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --column: 620px;
+    /* width of the page content */
+    color-scheme: dark;
+}
+
+
+/* =========================================================
+   2. RESET AND PAGE
+   ========================================================= */
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+}
+
+button,
+a {
+    font: inherit;
+}
+
+button {
+    cursor: pointer;
+}
+
+button:disabled {
+    cursor: not-allowed;
+}
+
+
+/* Visible keyboard focus for everything clickable */
+
+:focus-visible {
+    outline: 2px solid var(--save);
+    outline-offset: 3px;
+}
+
+.page {
+    width: 100%;
+    max-width: var(--column);
+    margin: 0 auto;
+    padding: 40px 20px 64px;
+}
+
+.header h1 {
+    margin: 0 0 4px;
+    font-size: 1.6rem;
+    line-height: 1.25;
+}
+
+.header p {
+    margin: 0 0 28px;
+    color: var(--muted);
+}
+
+
+/* =========================================================
+   3. RECORDER PANEL
+   ========================================================= */
+
+.recorder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 20px 28px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    background: var(--surface);
+}
+
+
+/* The big clock: tabular-nums keeps every digit the same width,
+   so the numbers don't jiggle as they change */
+
+.timer {
+    font-size: 3.2rem;
+    font-weight: 300;
+    line-height: 1;
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 36px;
+}
+
+.hint {
+    margin: 28px 0 0;
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+
+/* The record button: a red disc. While recording it turns
+   into a stop button and a ring pulses around it. */
+
+.record-button {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 92px;
+    height: 92px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--rec);
+    color: #fff;
+    transition: transform 0.12s;
+}
+
+.record-button:hover {
+    transform: scale(1.04);
+}
+
+.record-button:active {
+    transform: scale(0.97);
+}
+
+.record-button.is-recording::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 2px solid var(--rec);
+    animation: ring 1.6s ease-out infinite;
+}
+
+@keyframes ring {
+    from {
+        transform: scale(1);
+        opacity: 0.8;
+    }
+    to {
+        transform: scale(1.5);
+        opacity: 0;
+    }
+}
+
+
+/* After you stop: preview player + Save / Discard */
+
+.review {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    width: 100%;
+}
+
+.review-actions {
+    display: flex;
+    gap: 10px;
+}
+
+
+/* =========================================================
+   4. BUTTONS
+   ========================================================= */
+
+.button {
+    display: inline-block;
+    padding: 9px 18px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-2);
+    color: var(--text);
+    text-decoration: none;
+    line-height: 1.4;
+    transition: border-color 0.15s, opacity 0.15s;
+}
+
+.button:hover:not(:disabled) {
+    border-color: var(--muted);
+}
+
+.button:disabled {
+    opacity: 0.5;
+}
+
+.button.primary {
+    border-color: var(--save);
+    background: var(--save);
+    color: var(--save-ink);
+    font-weight: 600;
+}
+
+.button.small {
+    padding: 5px 12px;
+    font-size: 0.85rem;
+}
+
+.button.danger:hover {
+    border-color: var(--rec);
+    color: var(--rec);
+}
+
+
+/* =========================================================
+   5. SAVED RECORDINGS
+   ========================================================= */
+
+.library {
+    margin-top: 44px;
+}
+
+.library h2 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 8px;
+    font-size: 1.1rem;
+}
+
+.count {
+    padding: 0 9px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+
+/* Rows separated by thin lines instead of boxes */
+
+.item {
+    padding: 18px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.item-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.item-date {
+    font-weight: 600;
+}
+
+.item-meta {
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.item-actions {
+    display: flex;
+    gap: 8px;
+    flex: none;
+}
+
+audio {
+    width: 100%;
+    max-width: 100%;
+}
+
+
+/* =========================================================
+   6. MESSAGES (empty state, loading, errors)
+   ========================================================= */
+
+.message {
+    margin: 16px 0 0;
+    color: var(--muted);
+}
+
+.message.error {
+    padding: 10px 14px;
+    border: 1px solid rgba(255, 90, 95, 0.4);
+    border-radius: 10px;
+    background: rgba(255, 90, 95, 0.08);
+    color: #ff9a9d;
+}
+
+.recorder .message.error {
+    width: 100%;
+    margin-top: 20px;
+}
+
+
+/* =========================================================
+   7. SMALL SCREENS AND ACCESSIBILITY
+   ========================================================= */
+
+@media (max-width: 520px) {
+    .page {
+        padding: 28px 14px 48px;
+    }
+    .item-top {
+        flex-direction: column;
+    }
+}
+
+
+/* Respect people who turn off animations in their system settings */
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
