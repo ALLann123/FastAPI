@@ -1,0 +1,4 @@
+.env
+vosk-model-small-de-0.15/
+vosk-model-small-en-us-0.15/
+piper_voices/

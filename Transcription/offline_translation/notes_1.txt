@@ -1,0 +1,126 @@
+================Argos Translate================
+- Open-source machine translation library that runs on your computer
+- We can translate German speech to English locally. 
+
+====How it works=========
+- Uses the CPU locally and no-internet needed.
+	German Text---> Argos---> English Text
+- Install in our python virtual environment:
+	cmd>> uv pip install argostranslate
+- Verify installation:
+	cmd>> python -c "import argostranslate; print('Argos Translate installed successfully')"
+
+==========Download the Model we want==========
+- Installing the python package alone is not enough. We need the model for
+our pair(German/English)
+- Models are in .argosmodel packages
+	"https://github.com/argosopentech/argos-translate"
+- Run:
+***************setup_translation.py**********************
+#!/usr/bin/python3
+import argostranslate.package
+
+# Source and target language codes
+SOURCE_LANGUAGE="de"  # German
+TARGET_LANGUAGE="en"  # ENglish
+
+print("Fetching available translation models....")
+
+# Download the online list of available models
+argostranslate.package.update_package_index()
+
+# Get all available models
+available_packages=argostranslate.package.get_available_packages()
+
+# Find a direct German-to-English Model
+package=next(
+    (
+        p for p in available_packages
+        if p.from_code==SOURCE_LANGUAGE
+        and p.to_code==TARGET_LANGUAGE
+    ),
+    None 
+)
+
+
+if package is None:
+    print("German-to-English model was not found.")
+else:
+    print(f"Selected: {package.from_name}->{package.to_name}")
+    print("Downloading model. Please wait")
+
+    # Download the model package
+    downloaded_package=package.download()
+
+    # Install it on this computer
+    argostranslate.package.install_from_path(downloaded_package)
+
+    print("Installation complete")
+
+"""
+offline_translation>python setup_translation.py
+Fetching available translation models....
+Selected: German->English
+Downloading model. Please wait
+Installation complete
+"""
+**********************************************************
+
+========Offline Translation program========
+- Now
+*************************translate_to_english.py************************
+#!/usr/bin/python3
+import argostranslate.translate
+
+def translate_to_english(text: str)-> str:
+    """Translate German text into English offline"""
+    # ignore empty input
+    if not text or not text.strip():
+        return ""
+
+    # Translate locally using our installed model
+    return argostranslate.translate.translate(
+        text,
+        "de",
+        "en"
+    )
+
+while True:
+    text=input("German>> ").strip()
+
+    # Exit the program
+    if text.lower() in ("quit", "exit"):
+        print("\nBye")
+        break
+
+    try:
+        english_text=translate_to_english(text)
+        print(f"English: {english_text}")
+
+    except Exception as e:
+        print(f"Translation failed: {e}")
+
+
+"""
+offline_translation>python translate_to_english.py
+German>> Ich bin Allan
+2026-10-09 15:17:15 WARNING: Language de package default expects mwt, which has been added
+English: I am Allan
+German>> ich komme aus Berlin
+English: I am from Berlin
+German>> Bruder
+English: Brother
+German>> Schwester
+English: Sister
+German>> pferd
+English: Horse
+German>> miene brudder ist lustig
+English: My brother is funny.
+German>>
+English:
+German>> deine katze ist schon
+English: Your cat is already
+German>> meine hund ist brav
+English: My dog is good.
+""" 
+************************************************************************
