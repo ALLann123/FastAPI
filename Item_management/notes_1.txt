@@ -1,0 +1,374 @@
+==========CRUD APplication===========
+- Create, Read, Update, Delete.
+FastAPI--> Backend
+React--> Frontend
+
+====What is Build=====
+- Item management system where you can:
+	> Add new items with names and descriptions
+	> View all items in a list
+	> Edit existing items
+	> Delete items you no longer need
+
+======Backend======
+- RUn:
+	cmd>> mkdir crud-app
+	cmd>> cd crud-app
+- Add the package:
+	cmd>> uv pip install aiosqlite
+- Required packages:
+fastapi--> main web framework
+uvicorn--> A server that will run our FastAPI application
+sqlalchemy--> A database toolkit that helps us work with databases
+aiosqlite--> Allows async database operations with SQLite
+
+crud-app/
+├── backend/
+│   ├── main.py
+│   ├── database.py
+│   ├── models.py
+│   └── schemas.py
+
+1. Setup Database(database.py)
+****************database.py****************
+#!/usr/bin/python3
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+
+# Database URL for sqlite(create a file test.db)
+SQLALCHEMY_DATABASE_URL= "sqlite://./test.db"
+
+# create the database engine
+engine=create_engine(
+    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread":False}
+)
+
+# create a SessionLocal class for database sessions
+SessionLocal=sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# create a BAse class for our models
+Base=declarative_base()
+*******************************************
+Explanation
+- The DB is sqlite
+- Engine is responsible for connecting to the DB
+- SessionLocal will be used to create db session.
+- base is the class our modles will inherit from.
+
+2. Create the Item Model
+***************model.py****************
+#!/usr/bin/python3
+from sqlalchemy import Column, Integer, String
+from database import Base
+
+class Item(Base):
+    __tablename__="items"
+
+    id=Column(Integer, primary_key=True, index=True)
+    name=Column(String, index=True)
+    description=Column(String, index=True)
+***************************************
+Explanation
+- We're creating a table called items with three columns
+- id is our primary key(unique identifier for each item)
+- name and description will store text data
+- index=True(makes searching faster for these columns)
+
+1. Create Pydantic Schemas(schema.py)
+***************model.py****************
+#!/usr/bin/python3
+from pydantic import BaseModel
+
+# Base Schema with common  attributes
+class ItemBase(BaseModel):
+    name: str
+    description: str=None
+
+# schema for creating a new item
+class ItemCreate(ItemBase):
+    pass
+
+# Schema for reading/returning an item(includes id)
+class Item(ItemBase):
+    id:int
+
+    class config:
+        orm_mode=True
+***************************************
+Explanation
+- Schemas define the structure of our data when sending/receiving from the API
+- ItemCreate: used when creating a new item(doesn't need an ID yet)
+- Item is used when returning data(includes the ID)
+- orm_mode=True allows converting from database models to Pydantic models
+
+1. Create the Main FastAPI App(main.py)
+***************main.py****************
+#!/usr/bin/python3
+from contextlib import asynccontextmanager
+from typing import Annotated
+
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+import models
+import schemas
+from database import SessionLocal, engine
+
+
+# Startup/shutdown logic (replaces the deprecated @app.on_event handlers)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # create all tables in the database on startup
+    models.Base.metadata.create_all(bind=engine)
+    yield
+
+
+# create the FastAPI application
+app = FastAPI(lifespan=lifespan)
+
+# Add CORS middleware to allow React frontend to connect
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # React's default port
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all HTTP methods
+    allow_headers=["*"],  # Allow all headers
+)
+
+
+# Dependency to get a database session
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+# Reusable annotated dependency type
+DbSession = Annotated[Session, Depends(get_db)]
+
+
+# CREATE --> Add a new item
+@app.post("/items/", response_model=schemas.Item)
+def create_item(item: schemas.ItemCreate, db: DbSession):
+    db_item = models.Item(**item.model_dump())
+    db.add(db_item)
+    db.commit()
+    db.refresh(db_item)
+    return db_item
+
+
+# READ --> Get all items
+@app.get("/items/", response_model=list[schemas.Item])
+def read_items(db: DbSession, skip: int = 0, limit: int = 100):
+    return db.scalars(select(models.Item).offset(skip).limit(limit)).all()
+
+
+# READ --> Get a single item by ID
+@app.get("/items/{item_id}", response_model=schemas.Item)
+def read_item(item_id: int, db: DbSession):
+    item = db.get(models.Item, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return item
+
+
+# UPDATE --> Update an existing item
+@app.put("/items/{item_id}", response_model=schemas.Item)
+def update_item(item_id: int, item: schemas.ItemCreate, db: DbSession):
+    db_item = db.get(models.Item, item_id)
+    if db_item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    for field, value in item.model_dump().items():
+        setattr(db_item, field, value)
+
+    db.commit()
+    db.refresh(db_item)
+    return db_item
+
+
+# DELETE --> Remove an item
+@app.delete("/items/{item_id}")
+def delete_item(item_id: int, db: DbSession):
+    item = db.get(models.Item, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    db.delete(item)
+    db.commit()
+    return {"message": "Item deleted successfully"}
+**************************************
+Explanation:
+- We have endpoints for all CRUD opeations(Create, Read, Update, Delete)
+- Each endpoint has a specific HTTP method
+- Response_model param ensures our responses match the expected schema
+- Depends(get_db) provides a database session for each request
+- CORS middleware allows our React frontend to communicate with the backend
+- Run Server:
+	cmd>> uvicorn main:app --reload
+
+
+===================Building The Frontend with React.js====================
+- Create React App
+	cmd>> npm create vite@latest frontend -- --template react
+- Install Axios for API Calls:
+	cmd>. npm install axios
+Explanation
+- Axios is a library that makes it easier to send HTTP requests to our
+backend API.
+- React doesn't have built-in HTTP request capabilities, so we need it.
+- Replace:
+************************src/App.jsx************************
+import React, {useState, useEffect} from 'react'
+import axios from 'axios'
+import './App.css';
+
+//Base URL for our backend API
+const API_BASE="http://localhost:8000"
+
+
+function App(){
+  //state variables to manage our data
+  const [items, setItems]=useState([]);
+  const [name, setName]=useState('');
+  const [description, setDescription]=useState('');
+  const [editingId, setEditingId]=useState(null);
+
+  //useEffect hook runs when the component mounts
+  useEffect(()=>{
+    fetchItems();
+  },[]);
+
+  //Function to fetch all items from the backend
+  const fetchItems=async()=>{
+    try{
+      const response=await axios.get(`${API_BASE}/items/`);
+      setItems(response.data);
+    } catch(error){
+      console.error("Error fetching items:", error);
+    }
+  };
+
+  //function to create a new item
+  const createItem=async()=>{
+    try{
+      const response=await axios.post(`${API_BASE}/items/`, {
+        name,
+        description
+      });
+      setItems([...items, response.data]);
+      setName('');
+      setDescription('');
+    }catch (error){
+      console.error("Error creating item: ", error);
+    }
+  };
+
+  // Function to update an existing item
+  const updateItem=async()=>{
+    try{
+      const response=await axios.put(`${API_BASE}/items/${editingId}`, {
+        name,
+        description
+      });
+      setItems(items.map(item=>item.id===editingId?response.data:item));
+      setEditingId(null);
+      setName('');
+      setDescription('');
+    }catch (error){
+      console.error("Error Updating item: ", error);
+    }
+  };
+
+  // Function to update an existing item
+  const deleteItem=async(id)=>{
+    try{
+      await axios.delete(`${API_BASE}/items/${id}`);
+      setItems(items.filter(item=>item.id!==id));
+    } catch(error){
+      console.error("Error deleting item: ", error);
+    }
+  };
+
+  //Function to start editing an item
+  const startEdit=(item)=>{
+    setEditingId(item.id);
+    setName(item.name);
+    setDescription(item.description)
+  };
+
+  // Function to cancel editing
+  const cancelEdit = () => {
+    setEditingId(null);
+    setName('');
+    setDescription('');
+  };
+  return (
+    <div className='App'>
+      <h1>CRUD APP with FastAPI and React</h1>
+
+      <div className='item-form'>
+        <h2>{editingId ? 'Edit Item':'Add New Item'}</h2>
+        <input
+         type="text" 
+         placeholder='Name'
+         value={name}
+         onChange={(e)=>setName(e.target.value)}
+        />
+
+        <input
+         type="text" 
+         placeholder='Description'
+         value={description}
+         onChange={(e)=>setDescription(e.target.value)}
+        />
+        {editingId ?(
+          <>
+          <button onClick={updateItem}>
+            Update
+          </button>
+          <button onClick={cancelEdit}>
+            Cancel Edit
+          </button>
+          </>
+        ):(
+          <button onClick={createItem}>Create</button>
+        )}
+      </div>
+
+      <div className='items-list'>
+        <h2>Items</h2>
+        {items.length===0 ?(
+          <p>No Items found</p>
+        ): (
+          <ul>
+            {items.map(item=>(
+              <li key={item.id}>
+                <h3>{item.name}</h3>
+                <p>{item.description}</p>
+                <button onClick={()=>startEdit(item)}>Edit</button>
+                <button onClick={()=>deleteItem(item.id)}>Delete</button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default App;
+***********************************************************
+- We use react hooks(useState and useEffect) to manage state and side effects
+*API_BASE* points to our backend server
+Each function makes an API call using Axios and updates the UI accordingly
+The form changes between "Create" and "Edit" mode based on whether we're
+editing an existing item
+- Run:
+	cmd>> npm run dev
+
