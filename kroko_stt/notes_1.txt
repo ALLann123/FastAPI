@@ -1,0 +1,3 @@
+- Download dependancies:
+	cmd>> uv pip install sherpa-onnx sherpa-onnx-bin numpy soundfile
+- We are provided with a CPU-only python package

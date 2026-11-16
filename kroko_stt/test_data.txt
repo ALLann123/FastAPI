@@ -1,0 +1,63 @@
+meine schwester ist lehrerin.
+deine frau ist gut.
+nein, zuckerbitter.
+wo ist das café?
+deine hund ist brav.
+wo ist deine katze?
+Ich bin Anna, freut mich
+sie ist meine tochtor, lisa.
+Deine sohn ist brav
+deine frau ist gut
+die salat ist gut und frisch.
+Deine salat ist lecker.
+
+===========Testing Word=============
+Schwester
+Brudder
+Sohn
+Brudder
+Frau
+Salat
+Katze
+Hund
+
+
+=====Family========
+Miene brudder ist lustig.
+Wo ist deine schwester?
+Deine frau ist schon und alt
+Allan, deine tochter ist da druben.
+Das ist meine brudder, Alvin
+Mein papa ist gut
+Ich komme aus Berlin, Und du?
+Sie ist meine tochtor, lisa.
+
+=======Food==========
+Das restaurant ist billig
+Hallo, kaffee mit kekse nein zucker, bitte!
+Die kekse ist lecker
+Meine wurst ist gut, und du?
+Das brot ist frisch.
+
+==========Looking for the=========
+Ich bin Allan, wo ist das U-bahn
+Das u-bahn ist da drüben.
+Danke, Tchuss!
+
+- Die stadt ist grob
+Die cafe ist links.
+
+======Pets=========
+- Deine hund ist brav
+- Meine katze ist schon
+- Die pferd ist grob und alt
+- Wo ist deine haustier?
+
+
+wo ist deine katze?
+Ich bin Anna, freut mich
+sie ist meine tochtor, lisa.
+Deine sohn ist brav
+deine frau ist gut
+die salat ist gut und frisch.
+Deine salat ist lecker.
