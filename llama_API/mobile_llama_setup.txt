@@ -1,0 +1,43 @@
+========Create a venv=========
+- Using uv
+	termux>> uv venv
+- Activate it:
+	termux>> uv venv
+- Now activate it:
+	termux>> source .venv/bin/activate
+- To add a package:
+	termux>> uv pip install <package_name>
+
+
+==========Installated models=========
+- On termux
+	termux>> ollama list
+
+==========Start the Server===========
+	termux>> ollama serve &
+
+
+=========No server logs on screen============
+pkill ollama
+OLLAMA_LOG_LEVEL=error ollama serve > /dev/null 2>&1 &
+sleep 2
+ollama run qwen2.5:3b-instruct
+
+
+=========SSH==========
+- How to connect to the phone from the laptop cmd
+- Install openssh
+	termux>> pkg install openssh -y
+Set a password by running
+	termux>> passwd
+- Start the SSH server daemon:
+	termux>> sshd
+- Find IP:
+	termux>> ifconfig
+- Get the IP from wlan0
+- Get device name:
+	termux>> whoami
+
+==========Connect to SSH=============
+- Login with:
+	cmd>>  ssh uO_a320@192.168.1.100 -p 8022

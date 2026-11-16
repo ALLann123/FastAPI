@@ -1,0 +1,71 @@
+==============Architecture===============
+Curl/Browser--> FastAPI---> LangChain_Ollama---> Qwen2.5:3b--> Streamed chunks--> Browser
+
+- Create main.py
+
+*******************main.py*******************************
+#!/usr/bin/python3
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+from langchain_ollama import ChatOllama
+import uvicorn
+
+# create the appp
+app=FastAPI()
+
+# connect langchain to our local model
+llm = ChatOllama(
+    model="qwen2.5:3b-instruct",
+    temperature=0
+)
+
+# Generate function that streams the model response
+def generate_response(message: str):
+    """Pass user input to the llm"""
+    for chunk in llm.stream(message):
+        # Send each piece of text as soon as it is generated
+        yield chunk.content
+
+# test endpoint
+@app.get("/")
+def home():
+    return{
+        "message":"FastAPI+OLLAMA+QWEN streaming API"
+    }
+
+# streaming chat
+@app.get("/chat")
+def chat(message: str):
+    return StreamingResponse(
+        generate_response(message),
+        media_type="text/plain"
+    )
+
+# start our server
+if __name__=="__main__":
+    #start our server
+    uvicorn.run("main:app", host="192.168.1.100", port=8000, reload=True)
+*********************************************************
+- Run:	
+	cmd>> python main.py
+- Test the streaming:
+	cmd>> curl "http://192.168.1.100:8000/chat?message=Explain%20Python%20functions"
+*************************************************
+user>curl "http://192.168.1.100:8000/chat?message=Explain%20Python%20functions"
+Certainly! In Python, a function is a block of organized, reusable code that is used to perform a single action or operation. Functions provide better modularity for your application and a great way to achieve separation of concerns.
+
+Here's an overview of how you can define and use functions in Python:
+
+### Defining a Function
+You can define a function using the `def` keyword followed by the name of the function, parentheses `()`, and a colon. You can also specify parameters inside these parentheses. Here is an example:
+
+```python
+def greet(name):
+    """
+    This function greets the person passed as an argument.
+    """
+    print(f"Hello, {name}!")
+```
+		.....cont
+*************************************************
+N/B: Streaming matters as the user does not wait for the output.

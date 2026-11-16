@@ -1,0 +1,144 @@
+=======LLM============
+- A neural network trained to predict the next token
+- The more the model parameters give the model more capacity
+
+=====Selecting the Model=====
+qwen:1.8b
+- Small, fast local assistant
+- Good for:
+	> simple chatbot
+	> basic text generation
+	> Simple classification
+	> simple extraction
+	> lightweight automation
+	> basic voice-assistant commands
+	> simple summarization
+	> testing LangChain
+	> testing APIs
+
+qwen2.5:3b
+- Main local learning model
+- Improved coding, maths and instruction following, structured data and JSON 
+generation.
+- Suited for:
+	> coding assistance
+	> JSON generation
+	> structured extraction
+	> RAG
+	> chatbots
+	> basic agents
+	> tool calling
+
+=====Temperature=====
+- It controls randomness
+E.G:
+	temperature=0
+Be deterministic as possible
+Good for:
+	> coding
+	> JSON
+	> classification
+	> extraction
+	> agents
+	> tool calling
+
+=========First Program==========
+- Create:
+***************hello_qwen.py******************
+#!/usr/bin/python3
+from langchain_ollama import ChatOllama
+
+# create connecion to our local ollama model
+llm=ChatOllama(
+    model="qwen2.5:3b-instruct",
+    temperature=0
+)
+
+# send a question
+response=llm.invoke(
+    "Explain what is an API to a begginer"
+)
+
+# display
+print(response.content)
+**********************************************
+
+
+===========SystemPrompts============
+- Provides additional context and controls the models behavior:
+*******************main.py***************************
+#!/usr/bin/python3
+from langchain_ollama import ChatOllama
+from langchain_core.messages import SystemMessage, HumanMessage
+
+llm=ChatOllama(
+    model="qwen2.5:3b-instruct",
+    temperature=0
+)
+
+messages=[
+    SystemMessage(
+        content="You are a Red team specialist in penetration testing"
+    ),
+    HumanMessage(
+        content="Burp Suite automation in 3 statements?"
+    )
+]
+
+# stream
+print("AI: ", end="", flush=True)
+for chunk in llm.stream(messages):
+    print(chunk.content, end="", flush=True)
+print("\n")
+********************************************************************
+
+
+===========Using Qwen for JSON================
+- Useful here. ChatOllama supports structured output through JSON Schema,
+JSON mode and function-calling approaches
+*******************main.py***************************
+#!/usr/bin/python3
+from langchain_ollama import ChatOllama
+from pydantic import BaseModel
+
+class ServerInfo(BaseModel):
+    software:str
+    version:str
+    operating_system:str
+
+llm=ChatOllama(
+    model="qwen2.5:3b-instruct",
+    temperature=0
+)
+
+structured_llm=llm.with_structured_output(ServerInfo)
+
+result = structured_llm.invoke(
+    "Apache 2.4.50 is running on Ubuntu."
+)
+
+print(result)
+
+"""
+$ python 3_structured_json.py
+software='Apache' version='2.4.50' operating_system='Ubuntu'
+"""
+*****************************************************
+
+
+
+
+
+
+
+*******************main.py***************************
+*****************************************************
+
+
+*******************main.py***************************
+*****************************************************
+
+*******************main.py***************************
+*****************************************************
+
+********************************************************************
