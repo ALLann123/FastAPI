@@ -1,0 +1,326 @@
+======Finding The UNseen=======
+"Master Reccon and vulnerabilties will reveal themselves."
+GOAL of RECON:
+	> Map the Attack SUrface
+	> Find Shadow Assets(subdomains, services)
+	> Discover Technologies, secrets, Endpoints, Parameters
+	> Built a custom target profile.
+
+======Recon Workflow====
+- Tools are powerful and free
+- Reconnaissance is the backbone of bug bounty hunting.
+
+
+======Step 1: Asset Discovery(Domains & Subdomains)======
+- Tools we can use
+	AssetFinder
+	Subfinder
+	Amass
+	crt.sh
+	dnsx ---> collecting records of subdomains
+	shosubgo ----> extracts subdomains from shodan
+- Lets use Subfinder:
+	kali> subfinder -d target.com -o subdomains.txt
+Command above finds subdomains from the domain
+	kali> dnsx -l subdomains.txt -a -resp-only -o resolved.txt
+Resolves the subdomains to there respective IPs.
+
+=====Step 2: Probing & Port Scanning=======
+- Tools for this:
+	httpx
+	naabu---> port  scanning tool written in GOlang
+	masscan
+Commands:
+	kali> naabu -l resolved.txt -top-ports 1000 -o ports.txt
+	kali> httpx -l resolved.txt -title -tech-detect -status-code -o livehosts.txt
+- To fingerprint the web servers using httpx add the flag:	
+	`-web-server`
+
+
+====Step 3: Tech Stack & Framework Detection=======
+- Below are some tools:
+a. Wappalyzer: Browser extension and CLI tool for tech detection
+b. Nuclei Templates: Utilizes nuclei with technologies-detect templates for 
+identification.
+c. BuiltWith: Online tool with API for identifying technologies.
+Why?
+- Knowing if it's running Wordpress, Laravel, NGINX, or Apache can help you
+narrow down target-specific attack vectors.
+
+
+====Step 4: Crawl & ENdpoint Discovery=====
+- Which tool should be used for web scraping and data extration?
+a. Katana: Best for Js Heavy websites, effectively retrieves content
+b. Gau: Ideal to uncover new URLs from various sources
+c. Paramspider: Crucial for extracting parameters from URLs useful for identifying
+attack vectors.
+d. Waymore: Designed for exploring web applications, provides insights into
+structure and functionality.
+	kali> katana -u https://target.com -js-crawl -o endpoints.txt
+	kali> gau target.com | tee gau.txt
+- Combine all output & Filter unique parameters for testing
+
+====Step 5: Parameters + Secrets Hunting======
+- TOols:
+a. gf: Efficient pattern searching in files
+b. secretfinder: Identifies sensitvie information in code
+c. getJS: Retrieves Javascript files from web apps
+	kali> gf xss gau.txt > xss-params.txt
+- CHeck URLs with params like "redirect=", "url=", "file=", "callback="--> goldmine
+for bugs!
+
+====Step 6: JS Recon======GOLDMINE
+- Web data extraction cycle:
+	Retrive JS---> extract Hyperlinks---> Analyze JS---RESTART
+- COmmand:
+	kali> getJS --url https://target.com --output jurls.txt
+Look for:
+	> API Endpoints.
+	> Secrets/tokens.
+	> Internal links.
+	> Hidden paths.
+
+====Step 7: CDN, WAF, and DNS Intel======
+- Tools:
+a. asnlookup: Provides ASN information for network analysis.
+b. dnsdumpster: Offers DNS record analysis for domain mapping
+c. Securitytrails API:Delivers comprehensive domain and IP data.
+d. SHodan and Censys---> Search Engine for internet connected devices.
+- Understanding CDN/WAF Helps:
+	> Understand if requests are reaching the origin server.
+	> Bypass rate limits.
+	> Identify weak misconfigured edge services.
+
+
+
+======Advanced Recon Tips======
+Asset Discovery Techniques
+- Scope Expansion via 3rd parties:
+	> vendors
+	> Support links
+	> Static Asset providers
+- Github Recon:
+	> github-subdomains
+	> Manual Dorking
+- ASN Enumeration:
+	> amass intel
+	> censys.io
+- Wordlists Optimization:
+	> ctfr
+	> Commonspeak
+	> seclists
+- Google Dorks Automation:
+	> Automation Tools
+	> Dorking Manually
+
+==========Reconnaissance Advance Part + Deep Automation======
+🔥 Next Level Recon WOrkFlOw
+====Advanced ToolChain & Automation=====
+1. Hyper-Aggressive Asset Discovery
+- Parallelized subdomain Enumeration(Resolve + Filter CDNs)
+	kali> subfinder -d target.com -silent | anew subs.txt
+"anew" : is a tool for adding new lines to files.
+- Assetfinder:
+	kali> assetfinder -subs-only target.com | anew subs.txt
+	kali> amass enum -passive -d target.com | anew subs.txt
+	kali> curl -s "https://crt.sh/?q=%25.target.com&output=json" | jq -r '.[].name_value' | anew subs.txt
+- Filter CDNs WAFs & Resolve Clean Targets.
+	kali> dnsx -l subs.txt -resp -silent | grep -ivf cdn_providers.txt | anew resolved.txt
+TOols:
+"amass" : Subdomain enumeration, network mapping and external asset discovery
+"assetfinder" : Subdomain enumeration. Uses-:
+	> crt.sh
+	> certspotter
+	> VirusTotal
+	> Wayback machine
+to identify potential targets.
+"dnsx" : carries dns resoultion to respective IPs
+
+************************OUTPUT***************************
+┌──(root㉿kali)-[/home/kali/3_bug_bounty/evil_corp_2]
+└─# subfinder -d https://ryanada.com/ -silent | anew subs.txt
+
+www.margaret.ryanada.com
+www.wp.ryanada.com
+cpanel.ryanada.com
+cpcontacts.ryanada.com
+............
+
+┌──(root㉿kali)-[/home/kali/3_bug_bounty/evil_corp_2]
+└─# amass enum -passive -d ryanada.com | anew subs.txt
+ryanada.com (FQDN) --> ns_record --> hugh.ns.cloudflare.com (FQDN)
+ryanada.com (FQDN) --> ns_record --> serena.ns.cloudflare.com (FQDN)
+ryanada.com (FQDN) --> mx_record --> mail.cloudoon.com (FQDN)
+ryanada.com (FQDN) --> a_record --> 172.67.192.145 (IPAddress)
+ryanada.com (FQDN) --> a_record --> 104.21.36.104 (IPAddress)
+ryanada.com (FQDN) --> aaaa_record --> 2606:4700:3037::6815:2468 (IPAddress)
+ryanada.com (FQDN) --> aaaa_record --> 2606:4700:3037::ac43:c091 (IPAddress)
+172.67.0.0/16 (Netblock) --> contains --> 172.67.192.145 (IPAddress)
+13335 (ASN) --> managed_by --> CLOUDFLARENET - Cloudflare, Inc. (RIROrganization)
+................
+
+┌──(root㉿kali)-[/home/kali/3_bug_bounty/evil_corp_2]
+└─# curl -s -H "User-Agent: Mozilla/5.0" "https://crt.sh/?q=%25.ryanada.com&output=json" | jq -r '.[].name_value' | anew subs.txt
+*.ryanada.com
+ryanada.com
+................
+
+┌──(root㉿kali)-[/home/kali/3_bug_bounty/evil_corp_2]
+└─# dnsx -l endpoints.txt -a -resp-only -o resolved.txt 
+
+      _             __  __
+   __| | _ __   ___ \ \/ /
+  / _' || '_ \ / __| \  / 
+ | (_| || | | |\__ \ /  \ 
+  \__,_||_| |_||___//_/\_\
+
+                projectdiscovery.io
+
+[INF] Current dnsx version 1.2.3 (latest)
+104.21.36.104
+172.67.192.145
+172.67.192.145
+104.21.36.104
+91.134.202.89
+104.21.36.104
+172.67.192.145
+104.21.36.104
+172.67.192.145
+104.21.36.104
+172.67.192.145
+172.67.192.145
+................
+
+                                                                                                                                                            
+┌──(root㉿kali)-[/home/kali/3_bug_bounty/evil_corp_2]
+└─# naabu -l resolved.txt -top-ports 1000 -o ports.txt
+
+                  __
+  ___  ___  ___ _/ /  __ __
+ / _ \/ _ \/ _ \/ _ \/ // /
+/_//_/\_,_/\_,_/_.__/\_,_/
+
+                projectdiscovery.io
+
+[INF] Current naabu version 2.5.0 (latest)
+[WRN] UI Dashboard is disabled, Use -dashboard option to enable
+[INF] Running CONNECT scan with non root privileges
+51.91.16.37:110
+91.134.202.89:443
+91.134.202.89:25
+104.21.36.104:80
+51.91.16.37:25
+104.21.36.104:8080
+91.134.202.89:445
+.........................
+
+┌──(root㉿kali)-[/home/kali/3_bug_bounty/evil_corp_2]
+└─# httpx -l resolved.txt -title -tech-detect -status-code -o livehosts.txt
+
+    __    __  __       _  __
+   / /_  / /_/ /_____ | |/ /
+  / __ \/ __/ __/ __ \|   /
+ / / / / /_/ /_/ /_/ /   |
+/_/ /_/\__/\__/ .___/_/|_|
+             /_/
+
+                projectdiscovery.io
+
+[INF] Current httpx version v1.9.0 (latest)
+[WRN] UI Dashboard is disabled, Use -dashboard option to enable
+http://91.134.202.89 [301] [Document Moved] [IIS:10.0,Microsoft ASP.NET,Windows Server]
+http://104.21.36.104 [403] [Cloudflare]
+http://172.67.192.145 [403] [Cloudflare]
+https://51.91.16.37 [200] [Adept Advisory – Skills for Enterprise Growth] [Complianz,Contact Form 7:6.1.5,Elementor:3.35.7,Font Awesome,Google Analytics,Google Tag Manager,HTTP/3,MySQL,PHP,Slick,WP-Optimize,WordPress,jQuery]  
+
+*********************************************************
+
+
+
+======Secret Source====
+- ASN enumeration via BGP:
+	kali> amass intel -org 'Target Corp' | cut -d, -f1 | anew asn_ips.txt
+	kali> masscan -iL asn_ips.txt -p1-65535 --max-rate 100000 -oG masscan.out
+
+2. AI-Powered Fingerprinting
+- Use Nuclei with AI-Driven Templates (Custom Model)
+	kali> nuclei -l resolved.txt -t ~/nuclei-templates/ -etags cloud,misconfig -severity critical,high -stats
+Tool Fusion:
+	> webanalyze(wappalyzer on steroids
+	> httpx -jarm(TLS fingerprinting to bypass WAFs)
+	> gowitness (Screenshot analysis w/ optical character recognition)
+
+3. Semantic Endpoint Mining
+- Spider + Parameter Extraction with context Awareness
+	kali> katana -u https://target.com -jc -d 3 -f qurl | tee endpoints.txt
+	kali> waymore -i target.com -mode U -o waymore_out  
+	kali> gau target.com --subs --threads 50 | uro | tee gau.txt
+- Extract Params with AI Context (Using GF-Patterns++)
+	kali> gf ssti endpoints.txt | httpx -silent -status-code -match-string "{" 
+TOOLS:
+katana: web crawler to map attack surfaces, discover hidden endpoints, and find
+sensitive data in JS files. Can discover XSS, SSRF and parameter-based bugs
+Waymore: similar to waybackurlsand gets archives.
+gau: used for collection of URLS
+gf: advanced tool for greping patterns in our recon.
+- Advanced tools:
+	> arjun-Param Brute-forcing
+	> unfurl-URL structure parsing
+	> dnsobserver-DNS rebinding checks
+
+
+4. JavaScipt Reconnaissance(v2.0)
+- DOM Sink Analysis + Secret Extraction
+	kali> subjs -i live.txt -c 50 | anew js.txt  
+	kali> python3 linkfinder.py -i js.txt -o links.html  
+	kali> jsleak --url-list js.txt --secrets --sinks
+Critical Checks:
+	> window.postMessage handlers
+	> Hardcoded AWS keys in minified JS
+	> Endpoints with internal in path
+
+5. Cloud & Edge Recon
+- Discovering s3 AWS buckets:
+- Cloud Bucket Hunting
+	kali> cloud_enum -k target -l cloud.txt
+	kali> s3scanner scan -f resolved.txt
+- WAF Bypass Testing
+	kali> wafw00f https://target.com -v | tee waf.txt
+	kali> byp4xx -l endpoints.txt -s -o bypassed_endpoints.txt
+
+******************************AUTOMATION SCRIPT*****************************************
+#!/bin/bash
+# ReconX: Autonomous Recon Engine (v2.0)
+target=$1
+mkdir -p $target/{recon,js,cloud,exploits}
+
+# Phase 1: Asset Mapping
+subfinder -d $target -silent | anew $target/recon/subs.txt
+amass enum -passive -d $target | httpx -jarm -asn | tee $target/recon/live_jarm.txt
+nuclei -l $target/recon/live_jarm.txt -t ~/nuclei-templates/ -es info -o $target/recon/nuclei_tech.txt
+
+# Phase 2: JS-Driven Intel
+getJS --url-file $target/recon/live_jarm.txt --output $target/js/js_urls.txt
+python3 SecretFinder.py -i $target/js/js_urls.txt -o $target/js/secrets.json
+
+# Phase 3: Attack Surface Expansion
+waymore -i $target -o $target/recon/waymore  
+gf xss $target/recon/waymore/waymore.txt | qsreplace -a | dalfox pipe --silence
+
+# Phase 4: Cloud Exploit Prep
+s3scanner scan -f $target/recon/subs.txt -o $target/cloud/s3.txt  
+cdk-go run --target $target -o $target/cloud/cdk_report.html
+
+# Phase 5: AI-Powered Correlation
+python3 recon_correlator.py $target  # Custom ML model to link assets/secrets/endpoints
+******************************************************************************************
+
+
+==========Built Automation=========
+- Subfinder to find Subdomains
+- Endpoint Discovery with Katana
+- Port probing with HTTPX(identify live subdomains)---> Also discover tech stack
+- DNS resolution to IPs using dnsx
+- Port scanning using Naabu
+- Waybackurls/waymore for subdomain archieves
+- Automated screenshots with gowitness.

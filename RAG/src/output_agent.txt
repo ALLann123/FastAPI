@@ -1,0 +1,141 @@
+>python -m src.agent
+RAG Agent is ready!
+
+You: Why RAG?
+[EMBEDDINGS] Connecting to ollama EmbeddingGemma-300M...
+[EMBEDDINGS]Model connected successfully.
+
+Agent: RAG (Retrieval‑Augmented Generation) is used because it:
+
+* **Keeps knowledge fresh** – the system pulls up‑to‑date documents instead of relying on a static model that would need retraining.
+* **Provides grounding** – answers are based on real sources, which reduces hallucinations.
+* **Preserves privacy** – private data remains in your own knowledge store rather than being baked into the model.
+* **Reduces cost** – it’s cheaper than fine‑tuning a model just to improve factual recall.
+* **Enables traceability** – you can show exactly which document(s) an answer came from.
+
+(Source: *rag_notes.md*)
+
+You: what is naabu use for?
+[EMBEDDINGS] Connecting to ollama EmbeddingGemma-300M...
+[EMBEDDINGS]Model connected successfully.
+
+Agent: I don't know — that information is not in the uploaded documents.
+
+You: Asset discovery tools
+[EMBEDDINGS] Connecting to ollama EmbeddingGemma-300M...
+[EMBEDDINGS]Model connected successfully.
+
+Agent: **Asset discovery tools mentioned in your notes**
+
+| Category | Tools | Primary purpose |
+|----------|-------|-----------------|
+| Subdomain enumeration | **Subfinder**, **Assetfinder**, **Amass**, **crt.sh**, **shosubgo** | Find subdomains and related DNS records. |
+| DNS resolution / record collection | **dnsx** | Resolve discovered subdomains to IP addresses and gather DNS records. |
+| Port / service probing (often used after subdomains are found) | **Naabu** (port scanning) | Identify open ports on the discovered assets. |
+| Additional helpers | **anew** (adds new lines to files), **Waybackurls/waymore**, **gowitness** (screenshots) | Support the overall discovery workflow. |
+
+These tools are listed in the “Asset Discovery Techniques” and “Built Automation” sections of **Reccon.txt**.
+
+You:
+
+You: creating a wordlist
+[EMBEDDINGS] Connecting to ollama EmbeddingGemma-300M...
+[EMBEDDINGS]Model connected successfully.
+
+Agent: I don't know — that information is not in the uploaded documents.
+
+You: Tell me about pausing and resuming cracking
+[EMBEDDINGS] Connecting to ollama EmbeddingGemma-300M...
+[EMBEDDINGS]Model connected successfully.
+
+Agent: **Pausing and Resuming Cracking (from *Wireless_Pwn.pdf*)**
+
+1. **Why pause/resume?**
+   - Large wordlists (often generated with **crunch**) can be huge, making it impractical to store them fully on disk.
+   - You may need to stop a cracking session (e.g., to free resources or because you’re switching machines) and later continue without losing the work already done.
+
+2. **Typical workflow**
+   1. **Generate the wordlist** with `crunch` (or another generator).
+   2. **Save progress** using **John the Ripper** – it can write a *restore file* that records how far it has processed the wordlist.
+   3. **Feed the wordlist** (or its streamed output) into **aircrack‑ng** for WPA/WPA2 cracking.
+
+3. **Key commands / options**
+
+   - **John the Ripper restore flag**
+     ```bash
+     john --restore=upc
+     ```
+     - `upc` is the name of the restore file that John created during the previous run.
+     - Running this command tells John to pick up where it left off and output the next chunk of candidates.
+
+   - **Piping a generated wordlist directly to aircrack‑ng** (avoids saving the list):
+     ```bash
+     crunch 8 8 | aircrack-ng -w - -b <BSSID> capture.cap
+     ```
+     - `crunch 8 8` creates all 8‑character combinations and streams them to stdout.
+     - `-w -` tells aircrack‑ng to read the wordlist from **stdin**.
+
+   - **Combining pause/resume with piping**
+     1. Run John with the restore file to produce the next batch of candidates.
+     2. Pipe that output straight into aircrack‑ng, e.g.:
+        ```bash
+        john --restore=upc --stdout | aircrack-ng -w - -b <BSSID> capture.cap
+        ```
+     3. When you need to stop, press **Ctrl‑C**; John will automatically update the restore file, preserving the current position.
+
+4. **Advantages of this approach**
+
+   - **No large storage needed** – the wordlist never touches disk; it’s generated on‑the‑fly.
+   - **Progress is saved** – the restore file lets you continue later without re‑processing already‑tested candidates.
+   - **Flexibility** – you can switch between tools (John for management, aircrack‑ng for actual WPA cracking) while keeping a single source of truth for the wordlist position.
+
+**Summary**
+To pause and resume a cracking session, generate the wordlist with a tool like **crunch**, let **John the Ripper** manage a restore file (`--restore=...`), and pipe the output directly into **aircrack‑ng** (`-w -`). When you stop, John updates the restore file; when you start again, the same command with `--restore` picks up exactly where it left off.
+
+(Source: *Wireless_Pwn.pdf*)
+
+You:
+
+You:
+
+You: hashcat used for?
+[EMBEDDINGS] Connecting to ollama EmbeddingGemma-300M...
+[EMBEDDINGS]Model connected successfully.
+
+Agent: **What Hashcat Is Used For (from *Wireless_Pwn.pdf*)**
+
+- **Password‑hash cracking** – Hashcat is a high‑performance cracking tool that can attack many hash types, including WPA/WPA2 handshakes.
+- **GPU‑accelerated cracking** – It can use one or more GPUs (or CPUs) to dramatically speed up the cracking process (e.g., 14 million passwords in under 2 minutes on a GPU).
+- **WPA/WPA2 specific attacks** – By specifying `‑m 2500` (the hash mode for WPA/WPA2), Hashcat can crack Wi‑Fi passwords from a captured handshake file (`.hccapx`).
+- **Pause and resume** – Hashcat has built‑in support for pausing a session and later resuming it without losing progress, eliminating the need for an external tool like John the Ripper for this purpose.
+- **Wordlist handling** – It works directly with wordlists (e.g., `rockyou.txt`) or can accept streamed input from tools like `crunch`.
+- **Device selection** – The `‑d` option lets you choose which device (CPU or GPU) to use for cracking (e.g., `‑d 1` for the first GPU).
+
+**Typical workflow described in the notes**
+
+1. **Convert a captured WPA handshake** (`.cap`) to Hashcat’s format (`.hccapx`) using the online cap2hashcat tool.
+2. **Run Hashcat** with the appropriate mode and device, pointing it at the `.hccapx` file and a wordlist:
+   ```bash
+   hashcat -m 2500 -d 1 handshake.hccapx rockyou.txt
+   ```
+3. **Monitor progress**, pause if needed, and later resume using Hashcat’s built‑in resume capabilities.
+
+(Source: *Wireless_Pwn.pdf*)
+
+You:
+
+You:
+
+You: hashcat command to display if I have a CPU or GPU
+[EMBEDDINGS] Connecting to ollama EmbeddingGemma-300M...
+[EMBEDDINGS]Model connected successfully.
+
+Agent: To see what processing devices Hashcat can use (CPU and any GPUs installed), run:
+
+```bash
+hashcat –I
+```
+
+This command displays information about your system’s CPU and any detected GPU devices, showing their IDs, types, and capabilities.
+
+(Source: *Wireless_Pwn.pdf*)

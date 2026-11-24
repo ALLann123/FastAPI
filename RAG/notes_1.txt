@@ -1,0 +1,582 @@
+=====================RAG=====================
+- AI assistant should:
+	> Read documents
+	> Create a vector database
+	> retrieve relevant information
+	> Answer questions using AI agents
+- Goals
+> Read PDF, TXT and Markdown documents
+> Split documents into smaller chunks
+> Convert chunks into numerical embeddings
+> Store embeddings in a vector db
+> Search for relevant information using semantic similarity
+> Use LLM to generate answers based on retrieved information
+> Maintain conversational context
+> LangGraph to control the agent's workflow
+> Cite the documents used to generate its answers.
+
+N/B: The vector DB doesnot contain an intelligent chatbot.
+Stores numerical representations of information and allows us to retrieve
+relevant content.
+LLM handles answer generation, while LangGraph orchestrates the workflow.
+
+
+===================Technology Stack=================
+- Everything in our application will use open-source software or openly
+available model weights.
+ LangGraph ===> Agent Orchestration
+ LangChain ===> Model and tool integration
+ Embeddings ==> Gemma300M Text embeddings
+ ChromaDB ====> Store and search vectors
+ PyPDF =======> Read documents
+ LangChain====> Chunk documents
+ Ollama	======> Run an LLM locally
+
+
+==================UNdersTanding===============
+RAG stands for Retrieval-Augmented Generation
+Combines:
+1. Retrieval--> Finding information relevant to a user's question.
+2. Generation--> Using an LLM to formulate an answer using the information.
+- Imagine we have 100 PDF documents about cybersecurity. You ask:
+	What are the common techniques used in API enumeration?
+We get citation of where in the documents it got the answers instead
+of relying on its training knowledge.
+
+===========A RAG Application works=========
+User/Agent asks a question
+	"What are the common techniques used in API enumeration?"
+1. Retrieval
+- Search the vector database for relevant document chunks
+Retrieved Information
+	> Endpoint discovery
+	> HTTP method enumeration
+	> Parameter fuzzing
+	> API version discovery
+
+2. Generation
+- Send the question and retrieved information to the LLM
+
+3. Final Answer
+- The assistant produces an answer grounded in the retrieved documents and
+identifies its sources.
+
+==============Concepts==============
+1. Document Loader====> Reads PDFs, text files, etc
+2. Chunking =====> Splits large documents into smaller pieces
+3. Embeddings====> Converts text into numerical vectors
+4. Vectore database===> Stores and indexes those vectors
+5. Retriever======> Finds relevant chunks
+6. LLM======> Generates the final answer.
+
+
+================EmbeddingGemma-300M================
+- 300M parameters
+- Languages 100+
+- Runs locally
+- Transforms documents and questions into vectors. We need a separate
+LLM for generating answers.
+- Install via ollama:
+	cmd>> ollama serve          	#run as root/admin
+	cmd>> ollama pull embeddinggemma:300m
+- Verify install:
+	cmd>> ollama list
+- Install:
+	cmd>> uv pip install ollama
+- Test it:
+*************************testing_gemma.py**************************
+
+*******************************************************************
+
+- Now in langchain add the package:
+	cmd>> uv pip install langchain-ollama
+******************************main.py******************************
+from langchain_ollama import OllamaEmbeddings
+
+embeddings = OllamaEmbeddings(
+    model="embeddinggemma:300m"
+)
+*******************************************************************
+
+
+================ChromaDB(VectorDB)===============
+- A vector database stores embeddings alongside the original text and
+metadata.
+- Use ChromaDB
+- Why Chroma?
+	> Runs locally
+	> Persistent Storage
+	> Supports similarity search
+	> Integrates with LangChain
+	> No paid API
+- Chroma handles vector indexing and similarity search.
+
+- Project structure
+rag_knowledge_agent/
+│
+├── data/
+│   └── documents/
+│
+├── chroma_db/
+│
+├── src/
+│   ├── __init__.py
+│   ├── embeddings.py
+│   ├── ingest.py
+│   ├── search.py
+│   ├── rag.py
+│   └── agent.py
+│
+├── .env
+├── requirements.txt
+└── main.py
+- Build the files gradually
+- Create requirements.txt
+- Then run:
+	cmd>> uv pip install -r requirements.txt
+
+
+=========Build a vector store===========
+- Test the Gemma-300M
+**************************embeddigs.py*******************************
+
+from langchain_ollama import OllamaEmbeddings
+
+
+class EmbeddingGemma:
+
+    def __init__(self):
+        print("[EMBEDDINGS] Connecting to Ollama EmbeddingGemma-300M...")
+
+        self.model = OllamaEmbeddings(
+            model="embeddinggemma:300m"
+        )
+
+        print("[EMBEDDINGS] Model connected successfully.")
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        """
+        Convert document chunks into vectors.
+        """
+
+        vectors = self.model.embed_documents(texts)
+
+        return vectors
+
+    def embed_query(self, text: str) -> list[float]:
+        """
+        Convert a user query into a vector.
+        """
+
+        vector = self.model.embed_query(text)
+
+        return vector
+
+
+if __name__ == "__main__":
+
+    embeddings = EmbeddingGemma()
+
+    document = "API security involves authentication and authorization."
+
+    query = "How can I protect an API?"
+
+    doc_vector = embeddings.embed_documents([document])
+    query_vector = embeddings.embed_query(query)
+
+    print("\nDocument dimensions:", len(doc_vector[0]))
+    print("Query dimensions:", len(query_vector))
+
+    print("\nDocument vector:", doc_vector[0][:10])
+    print("Query vector:", query_vector[:10])
+**********************************************************************
+- Run the test:
+	cmd>> python -m src.embeddings
+- This will be our embedding engine
+- We separate documents and query embedings. This helps optimize retrival.
+
+=============Build first vector DB===========
+- We store vectors generated by EmbeddingGemma in ChromaDB
+
+=======step 1: Create a test Database====
+- create src/vector_test.py:
+*************************vector_test.py*****************************
+
+from langchain_chroma import Chroma
+from src.embeddings import EmbeddingGemma
+
+
+# Load embedding model
+embeddings = EmbeddingGemma()
+
+
+# Create persistent vector database
+vector_store = Chroma(
+    collection_name="knowledge_base",
+    embedding_function=embeddings,
+    persist_directory="./chroma_db"
+)
+
+
+# Sample documents
+documents = [
+    "FastAPI is a Python framework for building APIs.",
+
+    "JWT is commonly used for API authentication.",
+
+    "SQL injection occurs when untrusted input "
+    "is improperly handled in SQL queries.",
+
+    "React is a JavaScript library for building "
+    "user interfaces.",
+
+    "API rate limiting helps prevent excessive requests."
+]
+
+
+# Store documents
+vector_store.add_texts(documents)
+
+print("Documents successfully stored!")
+
+
+# Search
+query = "How can I prevent excessive API requests?"
+
+results = vector_store.similarity_search(
+    query,
+    k=3
+)
+
+
+print("\nSearch results:")
+
+for result in results:
+    print("----------------------------")
+    print(result.page_content)
+********************************************************************
+- Run:
+	cmd>> python -m src.vector_test
+
+- When we executed:
+	`vector_store.add_texts(documents)`
+LangChain performed the following operations:
+	> Accepted our text documents
+	> Called EmbeddingGemma to generate vectors
+	> Passed the text and vectors to chromaDB
+	> Stored the records in our persistent database
+- When we executed:
+```
+results = vector_store.similarity_search(
+    query,
+    k=3
+)
+```
+It:
+	> Converted our query into a vector
+	> Compared the query against stored vectors
+	> Ranked the results by similarity
+	> Returned the three most relevant documents
+
+
+
+======================Step 2: Inspect the database====================
+- Create src/inspect_db.py:
+*************************inspect_db.py********************************
+import chromadb
+
+client=chromadb.PersistentClient(
+    path="./chroma_db"
+)
+
+collection=client.get_collection(
+    name="knowledge_base"
+)
+
+print("Total record: ", collection.count())
+
+results=collection.get(
+    include=["documents", "metadatas"]
+)
+
+for doc_id, document, metadata in zip(
+    results["ids"],
+    results["documents"],
+    results["metadatas"]
+):
+    print("\nID:", doc_id)
+    print("Document:", document)
+    print("Metadata:", metadata)
+"""
+\RAG>python -m src.inspect_db
+Total record:  5
+
+ID: 6154fca8-e545-42f8-b477-70727dac3bdb
+Document: FastAPI is a Python framework for building APIs.
+Metadata: None
+
+ID: e94a6df9-44f6-481f-b136-2b68cd0e3eab
+Document: JWT is commonly used for API authentication.
+Metadata: None
+
+ID: f29a35fa-5a60-409e-95d8-e71201eef90c
+Document: SQL injection occurs when untrusted input is improperly handled in SQL queries.
+Metadata: None
+
+ID: 70280acd-4a61-40f8-bf82-ad81dc9ec2c8
+Document: React is a JavaScript library for building user interfaces.
+Metadata: None
+
+ID: 38216e76-aaa2-44ee-a5ab-53d9e01efbc9
+Document: API rate limiting helps prevent excessive requests.
+Metadata: None
+
+"""
+***************************************************************************
+- Run:
+	cmd>> python -m src.inspect_db
+
+We build a persistent vector database🎉🚀🚀 that survives restarts.
+
+
+===============Build a document ingestion pipeline================
+- We used manually written text
+- Real RAG systems need to ingest files
+- Build a document ingestion pipeline
+- Supports:
+	PDF
+	TXT
+	Markdown
+data/
+└── documents/
+    ├── api_security.pdf
+    ├── langchain_notes.txt
+    └── rag_notes.md
+
+==========Understanding CHunking===============
+- Imagine a 100-page PDF
+We cannot pass it as one input to our model
+We split it into smaller pieces
+The process is called chunking
+- Two important parameters:
+	chunk_size-----> maximum target size of each chunk
+	chunk_overlap---> Amount of text shared between consecutive chunks
+Why overlap?
+ Not to lose the context connecting two statements.
+- First implementation we'll use chunk_size of 1000 characters and overlap
+of 150 characters(tune this later)
+
+========Implementation ingestion========
+- Create src/ingest.py
+*************************ingest.py*************************************
+import time
+from pathlib import Path
+from uuid import NAMESPACE_URL, uuid5
+
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_chroma import Chroma
+from pypdf import PdfReader
+
+from src.embeddings import EmbeddingGemma
+
+
+DOCUMENT_DIR = Path("data/documents")
+DB_DIR = "./chroma_db"
+BATCH_SIZE = 32
+
+
+def load_pdf(file_path: Path) -> list[Document]:
+    """One Document per page, same shape PyPDFLoader produced."""
+    reader = PdfReader(str(file_path))
+    return [
+        Document(
+            page_content=page.extract_text() or "",
+            metadata={"source": file_path.name, "page": index},
+        )
+        for index, page in enumerate(reader.pages)
+    ]
+
+
+def load_text(file_path: Path) -> list[Document]:
+    return [
+        Document(
+            page_content=file_path.read_text(encoding="utf-8"),
+            metadata={"source": file_path.name},
+        )
+    ]
+
+
+def load_documents() -> list[Document]:
+    documents = []
+    for file_path in sorted(DOCUMENT_DIR.iterdir()):
+        suffix = file_path.suffix.lower()
+
+        if suffix == ".pdf":
+            documents.extend(load_pdf(file_path))
+        elif suffix in (".txt", ".md"):
+            documents.extend(load_text(file_path))
+
+    # Drop empty pages (e.g. scanned PDFs with no text layer)
+    return [doc for doc in documents if doc.page_content.strip()]
+
+
+def split_documents(documents):
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=150,
+    )
+    return splitter.split_documents(documents)
+
+
+def create_vector_store(chunks):
+    embeddings = EmbeddingGemma()
+
+    vector_store = Chroma(
+        collection_name="knowledge_base",
+        embedding_function=embeddings,
+        persist_directory=DB_DIR,
+    )
+
+    ids = [
+        str(
+            uuid5(
+                NAMESPACE_URL,
+                f"{doc.metadata.get('source', '')}-"
+                f"{doc.metadata.get('page', '')}-"
+                f"{doc.page_content}",
+            )
+        )
+        for doc in chunks
+    ]
+
+    # Batched so progress is visible and one failure doesn't lose everything
+    for start in range(0, len(chunks), BATCH_SIZE):
+        end = start + BATCH_SIZE
+        vector_store.add_documents(documents=chunks[start:end], ids=ids[start:end])
+        print(f"  embedded {min(end, len(chunks))}/{len(chunks)}")
+
+    return vector_store
+
+
+if __name__ == "__main__":
+    start = time.perf_counter()
+
+    print("[1] Loading documents...")
+    documents = load_documents()
+    print("Loaded documents:", len(documents))
+
+    print("[2] Splitting documents...")
+    chunks = split_documents(documents)
+    print("Generated chunks:", len(chunks))
+
+    print("[3] Creating vector database...")
+    vector_store = create_vector_store(chunks)
+    elapsed = time.perf_counter() - start
+
+    print("[SUCCESS] Ingestion completed!")
+    print("Stored chunks:", vector_store._collection.count())
+    print(f"\nElapsed time: {elapsed:.2f} seconds")
+
+
+"""
+RAG>python -m src.ingest
+[1] Loading documents...
+Loaded documents: 15
+[2] Splitting documents...
+Generated chunks: 40
+[3] Creating vector database...
+[EMBEDDINGS] Connecting to ollama EmbeddingGemma-300M...
+[EMBEDDINGS]Model connected successfully.
+  embedded 32/40
+  embedded 40/40
+[SUCCESS] Ingestion completed!
+Stored chunks: 45
+
+Elapsed time: 178.65 seconds
+"""
+***********************************************************************
+- Run:
+	cmd>> python -m src.ingest
+Pipeline:
+PDF / TXT / Markdown
+        |
+        v
+Document Loader
+        |
+        v
+Text Splitter
+        |
+        v
+EmbeddingGemma
+        |
+        v
+ChromaDB
+
+
+===================Build a semantic search engine===============
+- We now have a real database containing real documents
+- Create a dedicated search module
+src/search.py:
+*************************search.py************************************
+from langchain_chroma import Chroma
+from src.embeddings import EmbeddingGemma
+
+def get_vector_store():
+    embeddings=EmbeddingGemma()
+
+    return Chroma(
+        collection_name="knowledge_base",
+        embedding_function=embeddings,
+        persist_directory="./chroma_db"
+    )
+
+def search_documents(query: str, k:int=4):
+    vector_store=get_vector_store()
+
+    result=vector_store.asimilarity_search_with_score(
+        query,
+        k=k
+    )
+    return result
+
+if __name__=="__main__":
+
+    while True:
+        query=input("Ask your knowledge base: ")
+
+        if query in ["exit", quit]:
+            break
+
+        if query =="":
+            continue
+
+        results = search_documents(query)
+
+        for document, distance in results:
+
+            print("\n--------------------------")
+
+            print("Source:", document.metadata.get("source"))
+
+            print("Content:", document.page_content)
+
+            print("Distance:", distance)
+
+        print("\n\n")
+**********************************************************************
+- Run:
+	cmd>> python -m src.search
+
+- We are using:
+	```
+	similarity_search_with_score()
+	```
+Chroma returns a distance score, not necessarily a similarity percentage
+- For cosine distance:
+	> Lower distance generally means more similar
+	> Higher distance generally means less similar
+- We have a working search_engine without adding an LLM.
+
+
+
