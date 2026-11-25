@@ -1,0 +1,366 @@
+===============Daraja API=============
+- A small M-PESA STK push payment API using python and fastapi
+- Sandbox app for learning on our Daraja Dashboard
+- Customer enter phone number and amount, then have your fastAPI
+backend request an M-PESA payment prompt on their phone
+======What we're Building======
+1. Client/API tester
+	Sends phone number and amount
+2. FastAPI application
+	Validates input and creates the Daraja Request
+3. Safaricom Daraja Sandbox
+	Processes the test STK push request
+4. Callback Endpoint
+	Receives the eventual transaction result
+N/B: Use pythons "requests" library for HTTP calls, FastAPI for API, and
+environment variables for secrets
+
+
+=====.env file========
+- We will add this file to the .gitignore file to avoid private keys from
+leaking.
+- We get the keys from the Daraja portal
+DARAJA_CONSUMER_KEY=your_consumer_key
+DARAJA_CONSUMER_SECRET=your_consumer_secret
+
+DARAJA_SHORTCODE=174379
+DARAJA_PASSKEY=your_sandbox_passkey
+
+DARAJA_CALLBACK_URL=https://your-public-domain.example/api/mpesa/callback
+
+- Because we are in development we are going to use ngrok for port fowarding.
+Inorder, for safaricom servers to be able to reach our server. 
+	1. Login to ngrok
+	2. Quick Start
+	3. Run the command:
+		cmd>> ngrok http 8000 --url https://uncivil-moriah-unsuppressive.ngrok-free.dev
+N/B: 8000 is the port we are exposing to the internet.
+On the DARAJA_CALLBACK_URL add
+	"https://uncivil-moriah-unsuppressive.ngrok-free.dev"
+
+=============Build Your First Endpoint:authentication=============
+- Daraja uses OAuth to issue an access token. Backend uses this token
+when requesting an STK Push.
+- Create "main.py" and add:
+********************main.py****************************
+#!/usr/bin/python3
+import os
+import requests
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException
+import uvicorn
+
+# Load credentials from the .env file
+load_dotenv()
+
+app = FastAPI(title="Daraja M-PESA Tutorial")
+
+# Sandbox base URL
+BASE_URL = "https://sandbox.safaricom.co.ke"
+
+
+@app.get("/")
+def home():
+    return {
+        "message": "Daraja FastAPI is running"
+    }
+
+
+@app.get("/token")
+def get_access_token():
+    # Read our credentials securely from environment variables
+    consumer_key = os.getenv("DARAJA_CONSUMER_KEY")
+    consumer_secret = os.getenv("DARAJA_CONSUMER_SECRET")
+
+    if not consumer_key or not consumer_secret:
+        raise HTTPException(
+            status_code=500,
+            detail="Daraja credentials are missing"
+        )
+
+    # Ask Safaricom for an OAuth access token
+    url = (
+        f"{BASE_URL}/oauth/v1/generate"
+        "?grant_type=client_credentials"
+    )
+
+    try:
+        response = requests.get(
+            url,
+            auth=(consumer_key, consumer_secret),
+            timeout=20
+        )
+        response.raise_for_status()
+        data = response.json()
+
+    except requests.RequestException:
+        raise HTTPException(
+            status_code=502,
+            detail="Could not authenticate with Daraja"
+        )
+
+    token = data.get("access_token")
+
+    if not token:
+        raise HTTPException(
+            status_code=502,
+            detail="Daraja did not return an access token"
+        )
+
+    # For this learning endpoint, return only whether
+    # authentication succeeded. Do not expose the token.
+    return {
+        "authenticated": True,
+        "message": "Daraja authentication successful"
+    }
+
+
+# start our server
+if __name__=="__main__":
+    #start our server
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+*******************************************************
+
+- Response /docs:
+********************************************************
+{
+  "authenticated": true,
+  "message": "Daraja authentication successful"
+}
+********************************************************
+- Our backend, successfully obtains an access token.
+
+
+==========STK Push Endpoint============
+- Extend the main.py  program
+- Let customer request a payment prompt
+- STK push request requeires an access token, a timestamp, a Base64-encoded
+password, the phone number, amount, shortcode and callback URL(ngrok)
+*******************main.py*****************************
+#!/usr/bin/python3
+import os
+import requests
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException
+import uvicorn
+#---This imports handle STK pus
+import base64
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from pydantic import BaseModel, Field
+
+# Load credentials from the .env file
+load_dotenv()
+
+app = FastAPI(title="Daraja M-PESA Tutorial")
+
+# Sandbox base URL
+BASE_URL = "https://sandbox.safaricom.co.ke"
+
+
+@app.get("/")
+def home():
+    return {
+        "message": "Daraja FastAPI is running"
+    }
+
+
+@app.get("/token")
+def get_access_token():
+    # Read our credentials securely from environment variables
+    consumer_key = os.getenv("DARAJA_CONSUMER_KEY")
+    consumer_secret = os.getenv("DARAJA_CONSUMER_SECRET")
+
+    if not consumer_key or not consumer_secret:
+        raise HTTPException(
+            status_code=500,
+            detail="Daraja credentials are missing"
+        )
+
+    # Ask Safaricom for an OAuth access token
+    url = (
+        f"{BASE_URL}/oauth/v1/generate"
+        "?grant_type=client_credentials"
+    )
+
+    try:
+        response = requests.get(
+            url,
+            auth=(consumer_key, consumer_secret),
+            timeout=20
+        )
+        response.raise_for_status()
+        data = response.json()
+
+    except requests.RequestException:
+        raise HTTPException(
+            status_code=502,
+            detail="Could not authenticate with Daraja"
+        )
+
+    token = data.get("access_token")
+
+    if not token:
+        raise HTTPException(
+            status_code=502,
+            detail="Daraja did not return an access token"
+        )
+
+    # For this learning endpoint, return only whether
+    # authentication succeeded. Do not expose the token.
+    return {
+        "authenticated": True,
+        "message": "Daraja authentication successful"
+    }
+
+
+#-------------Here we make an STK Push------------------
+# Validate the data sent to our payment endpoint
+class PaymentRequest(BaseModel):
+    phone: str=Field(
+        pattern=r"^254[71]\d{8}$",
+        description="Phone number in format 2547XXXXXXXX"
+    )
+    amount: int=Field(ge=1, le=250000)
+    reference: str=Field(
+        default="ORDER001",
+        min_length=1,
+        max_length=12
+    )
+
+# Endpoint to handle STK
+@app.post("/stk-push")
+def stk_push(payment:PaymentRequest):
+    consumer_key = os.getenv("DARAJA_CONSUMER_KEY")
+    consumer_secret = os.getenv("DARAJA_CONSUMER_SECRET")
+    shortcode = os.getenv("DARAJA_SHORTCODE")
+    passkey = os.getenv("DARAJA_PASSKEY")
+    callback_url = os.getenv("DARAJA_CALLBACK_URL")
+
+    if not all([
+        consumer_key,
+        consumer_secret,
+        shortcode,
+        passkey,
+        callback_url,
+    ]):
+        raise HTTPException(
+            status_code=500,
+            detail="Daraja configuration is incomplete"
+        )
+
+    # Step 1: Get an OAuth token
+    token_url = (
+        f"{BASE_URL}/oauth/v1/generate"
+        "?grant_type=client_credentials"
+    )
+
+    try:
+        token_response=requests.get(
+            token_url,
+            auth=(consumer_key, consumer_secret),
+            timeout=20
+        )
+
+        token_response.raise_for_status()
+        access_token=token_response.json()["access_token"]
+
+    except (requests.RequestException, KeyError):
+        raise HTTPException(
+            status_code=502,
+            detail="Daraja authentication failed"
+        )
+
+    # Step 2: Create the timestamp in Kenya's timezone
+    timestamp=datetime.now(
+        ZoneInfo("Africa/Nairobi")
+    ).strftime("%Y%m%d%H%M%S")
+
+    #Step 3: Generate the STK push password
+    password_string=f"{shortcode}{passkey}{timestamp}"
+    # sending over the internet we encode strings
+    password = base64.b64encode(
+        password_string.encode("utf-8")
+    ).decode("utf-8")
+
+    # Step 4: Prepare the request
+    payload = {
+        "BusinessShortCode": shortcode,
+        "Password": password,
+        "Timestamp": timestamp,
+        "TransactionType": "CustomerPayBillOnline",
+        "Amount": payment.amount,
+        "PartyA": payment.phone,
+        "PartyB": shortcode,
+        "PhoneNumber": payment.phone,
+        "CallBackURL": callback_url,
+        "AccountReference": payment.reference,
+        "TransactionDesc": "Order payment"
+    }
+
+    headers={
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+
+    # step 5: Send the STK push request to Safaricom
+    try:
+        response=requests.post(
+            f"{BASE_URL}/mpesa/stkpush/v1/processrequest",
+            json=payload,
+            headers=headers,
+            timeout=30
+        )
+        response.raise_for_status()
+        return response.json()
+
+    except requests.HTTPError as exc:
+        # Log details privately when debugging; don't expose
+        # Credentials or sensitive request headers
+        raise HTTPException(
+            status_code=502,
+            detail="Daraja rejected the STK push request"
+        )from exc
+
+    except requests.RequestException as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Could not reach Daraja"
+        )from exc
+
+# start our server
+if __name__=="__main__":
+    #start our server
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+*******************************************************
+
+- Response /docs:
+*******************************************************
+{
+  "MerchantRequestID": "c70c-411f-8040-248b2120a334564538",
+  "CheckoutRequestID": "ws_CO_191020261233042723269755",
+  "ResponseCode": "0",
+  "ResponseDescription": "Success. Request accepted for processing",
+  "CustomerMessage": "Success. Request accepted for processing"
+}
+*******************************************************
+- Got a successful prompt on my phone.
+
+
+================Receive the Payment Callback==============
+- Safaricom sends the eventual transaction result to your callback URL
+- Update main.py
+********************main.py***************************
+
+******************************************************
+
+- Response /docs:
+*******************************************************
+*******************************************************
+
+
+
+
+
+
+
