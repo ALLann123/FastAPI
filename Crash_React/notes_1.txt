@@ -1,0 +1,497 @@
+Why does plain Js so messy?
+	- We describe the page from the data.
+
+========Course Map=============
+Foundations--> setup, JSX, components, props, children, conditional rendering, lists and key
+Interactivity--> Events, useState, updating objects, and arrays, forms, sharing state between component
+Effects and Data---> useEffect,  fetching from an API, loading and error states, useREF, custom hooks, localStorage
+Building Real Apps----> React ROuter, Context, useReducer, project structure, deployment
+
+
+
+=============Js Crashcourse===========
+1. Arrow functions
+- Is a shorter modern syntax for writing function expressions in JS using "=>"
+******************calc_area.js**********************
+const length = 10;
+const width = 6;
+
+//write the function to calculate the area
+const area = (l, w) => l * w;
+
+//display area
+console.log(`Area: ${area(length, width)}`)
+
+/*
+Js_Refresh>node calc_area_arrow.js
+Area: 60
+
+*/
+****************************************************
+- Checking if true or false
+**********************bool_arrow.js**********************
+//const user = true;
+const user = false;
+
+const getUser = (user) => ({ role: user ? "admin" : "user" })
+
+//see if the current user is admin
+console.log(`ROLE: ${getUser(user).role}`)
+
+/*
+Js_Refresh>node boool_arrow.js
+ROLE: admin
+
+*/
+****************************************************
+
+2. Template literals
+- Instead of "" we use backticks ``
+**********************template_literals.js**********************
+const name = "Alvin";
+const greeting = `Hello, ${name}`
+
+console.log(greeting)
+
+/**
+ Js_Refresh>node template_literals.js
+Hello, Alvin
+
+ */
+****************************************************************
+
+3. Destructing
+- Pulls object values into standalone variables:
+**************************destructing.js**************************
+const user = { id: 1, city: "Nairobi" };
+const { id, city } = user;
+
+console.log(`ID: ${id}`);
+console.log(`CITY: ${city}`);
+
+/*
+Crash_React\Js_Refresh>node destructing.js
+ID: 1
+CITY: Nairobi
+
+*/
+******************************************************************
+- The variable names above must match the property names.
+
+4. Spread Syntax
+- Create a new object with all other properties and overrides where value has changed.
+***************************spread_syntax.js***************************
+const user = { id: 1, city: 'Nairobi' };
+const updated = {...user, city: "Mombasa" };
+
+//display original
+console.log(`Previous: ${user.city}`);
+console.log(`Updated: ${updated.city}`);
+
+/**
+ Js_Refresh>node spread_syntax.js
+Previous: Nairobi
+Updated: Mombasa
+
+ */
+**********************************************************************
+
+5. Array Methods
+- An array is a data structure consisting of values of similar data types in
+contigous memory.
+map() function creates a new array by calling a provided function on every element
+in the calling array.
+*****************************map_double.js******************************
+const numbers = [1, 2, 3, 4, 5];
+const doubleNums = numbers.map(num => num * 2);
+
+console.log(`Numbers: ${numbers}`);
+console.log(`Doubled: ${doubleNums}`);
+
+
+/**
+ Js_Refresh>node map_double.js
+Numbers: 1,2,3,4,5
+Doubled: 2,4,6,8,10
+
+ */
+************************************************************************
+- Extract properties from objects using maps()
+***************************extracting_properties_map.js*************************
+const users = [
+    { id: 123, name: "Alice" },
+    { id: 234, name: "Barasa" },
+    { id: 654, name: "Ruto" },
+];
+
+const names = users.map((user) => {
+    return user.name
+});
+
+console.log(`NAMES: ${names}`);
+
+/*
+>node extracting_properties_map.js
+NAMES: Alice,Barasa,Ruto
+
+*/
+********************************************************************************
+
+6. Ternary and logical AND
+- Ternary operators check conditions
+	condition ? expressionIfTrue : expressionIfFalse
+*********************ternary_check.js**********************************
+const age = 20;
+
+const status = age >= 20 ? "Adult" : "Minor";
+
+console.log(`Status: ${status}`);
+
+/*
+Js_Refresh>node ternary_check.js
+Status: Adult
+
+*/
+***********************************************************************
+
+
+====================Foundations===================
+GOAL- Build a page from small, reusable React Components
+
+What is REACT?
+- Is a Js library for building UIs
+- Central ideas behind it are:
+	1. Components
+> You split the page into small, independent pieces, such as header, a card or a 
+button
+	2. Declarative UI
+> Describe what the screen should look like for your data, and React updates the 
+browser page(the DOM) to match.
+
+
+======Setting up======
+- Install node
+- Check node:
+	cmd>> node -v
+	cmd>> npm -v
+
+===Create Project===
+- We use Vite a fast build tool
+	cmd>> npm create vite@latest react-basics -- --template react
+- If the tool asks extra questions, accept the defaults.
+	> if it install  skip and open the address printed on browser
+Otherwise run:
+	cmd>> cd react-basics
+	cmd>> npm install
+	cmd>> npm run dev
+
+=====File Structure=====
+react-basics/
+├── index.html        ← the single HTML page
+├── package.json      ← dependencies and scripts
+└── src/
+    ├── main.jsx      ← starting point of your app
+    ├── App.jsx       ← your main component
+    ├── App.css       ← styles for App
+    └── index.css     ← global styles
+index.html contains an empty strong
+	`<div id="root"></div>`
+the main.jsx puts our React app inside it.
+**********************main.jsx**********************
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import './index.css';
+import App from './App.jsx';
+
+createRoot(document.getElementById('root')).render(
+  <StrictMode>
+    <App />
+  </StrictMode>
+);
+****************************************************
+StrictMode adds extra checks during development to help you find bugs
+
+=====Your first Component======
+- A component is a JS function that returns a UI. 
+- Replace everything in src/App.jsx
+**************************App.jsx**************************
+//write another function 
+function Welcome(){
+  return <p>Welcome to the Crash Course</p>
+}
+
+function App(){
+  return(
+    <div>
+      <h1>Hello, React</h1>
+      <Welcome/>
+      <Welcome/>
+    </div>
+  );
+}
+
+export default App;
+***********************************************************
+- Component name starts with a capital letter "App", "Welcome"
+- Define components at the top level of a file never inside another component
+- When the returned UI covers several lines, wrap it in parantheses()
+
+=============JSX=============
+- JSX is the html like syntax inside your Js. Looks like HTML but stricter.
+Rule 1: Return one parent element
+*************wrong*********************
+return (
+	<h1>Title<h1/>
+	<p>Text</p>
+);
+***************************************
+- The above is wrong
+- Should be wrapped in a fragment as one element being returned:
+*************Correct*******************
+return (
+	<>
+		<h1>Title</h1/>
+		<p>Text</p>
+	<>
+);
+***************************************
+
+Rule2: Close evert tag
+<img src="photo.jpg" alt="A photo" />
+<input type="text" />
+<br />
+
+Rule3: Use { } for JS
+*********************App.jsx*************************
+//write another function 
+function Welcome(){
+  return <p>Welcome to the Crash Course</p>
+}
+
+
+function App(){
+  const name='Brian';
+  const year=2026;
+  const avatar='https://placehold.co/100';
+  return(
+    <div>
+      <h1>Hello, React</h1>
+      <Welcome/>
+      <Welcome/>
+      <br/>
+      <h2>{name.toUpperCase()}</h2>
+      <p>Born in {year - 21}</p>
+      <img src={avatar} alt={`Avatar of ${name}`} />
+    </div>
+  );
+}
+
+export default App;
+************************************************
+- Inside the {} put any JS expressions that produces a value. Statements such as
+if/for are not allowed there.
+
+
+=======Props=======
+- Props pass data from a parent component to a child. They work like function
+arguments.
+**************************App.jsx*************************
+//write another function 
+function Welcome(){
+  return <p>Welcome to the Crash Course</p>
+}
+
+//Component with a prop
+function Greeting({name, role}){
+  return <p>{name} is an {role}</p>
+}
+
+function App(){
+  const name='Brian';
+  const year=2026;
+  const avatar='https://placehold.co/100';
+  return(
+    <div>
+      <h1>Hello, React</h1>
+      <Welcome/>
+      <Welcome/>
+      <br/>
+      <h2>{name.toUpperCase()}</h2>
+      <p>Born in {year - 21}</p>
+      <img src={avatar} alt={`Avatar of ${name}`} />
+
+      <h2>Occupation</h2>
+      <Greeting name={name} role="AI Engineer"/>
+    </div>
+  );
+}
+
+export default App;
+**************************************************
+- We have passed different types into our function. Use quotes for plain strings and
+braces for everything else(other variables, integers, floats)
+- We can also set default values as prop holders:
+***************************************
+function Button({ text = 'Click me', color = 'blue' }) {
+  return <button style={{ backgroundColor: color, color: 'white' }}>{text}</button>;
+}
+****************************************
+
+
+=====The Children Prop=======
+- Anything placed between component's opening and closing tags arrives as children
+Useful for wrappers such as cards and layouts.
+**********************App.jsx*************************
+
+function Card({children}){
+  return <div className="card">{children}</div>
+}
+
+function App(){
+
+  return(
+    <Card>
+      <h2>Title</h2>
+      <p>This content is passed as children</p>
+    </Card>
+  );
+}
+
+export default App;
+**********************************************************
+
+
+========Props are read-only========
+- A component must never change its props
+*********************************
+function Price({ amount }) {
+  // Wrong: amount = amount * 1.16;
+  const total = amount * 1.16; // Right: create a new value
+  return <p>Total: {total.toFixed(2)}</p>;
+}
+*********************************
+- Get to improve on this when we get to state. Data can change over time.
+
+=========Conditional Rendering===========
+- Use ordinary JS to decide what to show
+- Ternary: choose between two things
+*****************************App.jsx********************************
+
+function Dashboard({isLoggedIn}){
+  if(!isLoggedIn){
+    return <p>Please Log in.</p>
+  }
+  return <h1>Your Dashboard</h1>
+}
+
+function Products({inStock}){
+  return <p>{inStock ? 'Available':'Sold out'}</p>
+}
+
+function App(){
+  const isLoggedIn=true;
+  const instock=true;
+  return(
+    <div>
+      <Dashboard isLoggedIn={isLoggedIn}/>
+      <Products inStock={instock}/>
+    </div>
+  );
+}
+
+export default App;
+****************************************************************
+- To render nothing at all, a component can return null.
+
+
+=============Lists and Keys=============
+- .map() to turn an array of data into an array of elements.
+**********************************App.jsx**********************************
+
+const fruits=[
+  {id:'f1', name:'Mango'},
+  {id:'f2', name:'Banana'},
+  {id:'f3', name:'Passion fruit'},
+];
+
+function App(){
+  return (
+    <ul>
+      {fruits.map((fruit)=>(
+        <li key={fruit.id}>{fruit.name}</li>
+      ))}
+    </ul>
+  )
+}
+
+export default App;
+***************************************************************************
+
+======Why keys Matter======
+- A key helps React track which item is which when a list changes
+
+======Thinking in React======
+- When given a page to build
+	1. Draw boxes arounf each part of the design. Each box is a possible component
+	2. Name each box
+	3. Arrange them as a tree of parents and children
+	4. Decides what data each one needs. That data becomes its props
+	5. Build it with fixed data first.
+
+
+================Final Project=================
+- A page that lists courses, highlights featured ones and shows which are full
+- Skills used: components, props, default values, children, conditional renderin, 
+maps, filter, keys and CSS
+
+- Create project:
+	cmd>> npm create vite@latest course-catalogue -- --template react
+- Inside the project. Create new folders:
+	src/components and src/data
+**********************courses.js****************************
+// src/data/courses.js
+const courses = [
+  {
+    id: 'c1',
+    title: 'HTML and CSS Basics',
+    instructor: 'Grace Wanjiru',
+    level: 'Beginner',
+    hours: 12,
+    price: 0,
+    seatsLeft: 15,
+    featured: false,
+  },
+  {
+    id: 'c2',
+    title: 'Modern JavaScript',
+    instructor: 'David Ochieng',
+    level: 'Beginner',
+    hours: 20,
+    price: 2500,
+    seatsLeft: 4,
+    featured: true,
+  },
+  {
+    id: 'c3',
+    title: 'React Fundamentals',
+    instructor: 'Fatuma Hassan',
+    level: 'Intermediate',
+    hours: 18,
+    price: 3500,
+    seatsLeft: 8,
+    featured: true,
+  },
+  {
+    id: 'c4',
+    title: 'Backend with Node.js',
+    instructor: 'Peter Kamau',
+    level: 'Intermediate',
+    hours: 24,
+    price: 4000,
+    seatsLeft: 0,
+    featured: false,
+  },
+];
+
+export default courses;
+********************************************************
