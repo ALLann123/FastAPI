@@ -1,0 +1,94 @@
+/* src/App.css */
+
+.container {
+    display: grid;
+    gap: 16px;
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 24px 16px;
+}
+
+.panel {
+    background: white;
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.total {
+    font-size: 2rem;
+    font-weight: 700;
+}
+
+.breakdown,
+.list {
+    list-style: none;
+}
+
+.breakdown li {
+    display: flex;
+    justify-content: space-between;
+}
+
+.form {
+    display: grid;
+    gap: 12px;
+}
+
+.form label {
+    display: grid;
+    gap: 4px;
+    font-weight: 600;
+}
+
+input,
+select,
+button {
+    font: inherit;
+    padding: 8px 12px;
+    border: 1px solid #cbd2d9;
+    border-radius: 8px;
+}
+
+button {
+    cursor: pointer;
+    background: white;
+}
+
+.form button,
+.chip-active {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+    color: white;
+}
+
+.error {
+    color: #991b1b;
+}
+
+.filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.list {
+    display: grid;
+    gap: 8px;
+}
+
+.item,
+.item-end {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.delete {
+    color: #991b1b;
+}
+
+.muted {
+    color: #52606d;
+}
